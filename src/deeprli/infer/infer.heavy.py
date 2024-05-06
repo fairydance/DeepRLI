@@ -1,0 +1,154 @@
+import os, sys, time, argparse, pathlib, logging, json
+from distutils.util import strtobool
+from tqdm import tqdm
+import numpy as np
+import pandas as pd
+import torch
+
+from deeprli.datasets import HeavyDatasetForInfer
+from deeprli.model import DeepRLI, DeepRLIForInterpretation
+
+if __name__ == "__main__":
+  parser = argparse.ArgumentParser(description="Infer DeepRLI (heavy)")
+  parser.add_argument('--config', type=str, help="the path of a configuration file")
+  parser.add_argument("--model", type=str, help="the path of a trained model or an ensemble of trained models")
+  parser.add_argument("--model-format", type=str, help="state_dict or model_object")
+  parser.add_argument("--interpretation", type=lambda x: bool(strtobool(x)), help="with interpretation or not")
+  parser.add_argument("--data-root", type=str, help="the root path of data")
+  parser.add_argument("--data-index", type=str, help="the path of an index file relative to the root")
+  parser.add_argument("--data-file", type=str, help="the path of a data file relative to the root")
+  parser.add_argument("--batch", type=int, help="batch size")
+  parser.add_argument("--gpu-id", type=int, help="the id of gpu")
+  parser.add_argument("--save-path", type=str, help="the path to deposit results")
+  parser.add_argument("--f-dropout-rate", type=float, help="input feature dropout")
+  parser.add_argument("--g-dropout-rate", type=float, help="graph feature dropout")
+  parser.add_argument("--hidden-dim", type=int, help="graph layer hidden dimension")
+  parser.add_argument("--num-attention-heads", type=int, help="number of attention heads")
+  parser.add_argument("--use-layer-norm", type=lambda x: bool(strtobool(x)), help="use layer normalization or not")
+  parser.add_argument("--use-batch-norm", type=lambda x: bool(strtobool(x)), help="use batch normalization or not")
+  parser.add_argument("--use-residual", type=lambda x: bool(strtobool(x)), help="use residual connections or not")
+  args = parser.parse_args()
+
+  if args.config and os.path.isfile(args.config):
+    with open(args.config) as f:
+      config = json.load(f)
+  else:
+    config = {}
+
+  config_keys = [
+    "model",
+    "model_format",
+    "interpretation",
+    "data_root",
+    "data_index",
+    "data_file",
+    "batch",
+    "gpu_id",
+    "save_path",
+    "f_dropout_rate",
+    "g_dropout_rate",
+    "hidden_dim",
+    "num_attention_heads",
+    "use_layer_norm",
+    "use_batch_norm",
+    "use_residual",
+  ]
+
+  config.update({key: value for key in config_keys if (value:=getattr(args, key, None)) is not None})
+
+  pathlib.Path(config["save_path"]).mkdir(parents=True, exist_ok=True)
+
+  logging.root.handlers = []
+  logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=[
+      logging.FileHandler(os.path.join(config["save_path"], "inferring.log"), 'w'),
+      logging.StreamHandler(sys.stdout)
+    ]
+  )
+
+  logger = logging.getLogger(__name__)
+  logger.info("DeepRLI Inferring Records")
+
+  now = time.localtime()
+  timestamp = "%04d-%02d-%02d %02d:%02d:%02d" % (now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
+  logger.info(f"Date: {timestamp}")
+  logger.info(config)
+
+  device = torch.device(f"cuda:{config['gpu_id']}" if config.get("gpu_id") is not None and torch.cuda.is_available() else "cpu")
+
+  logger.info("")
+  logger.info(f"Device: " + ("GPU" if config.get("gpu_id") is not None and torch.cuda.is_available() else "CPU"))
+  logger.info("=" * 80)
+  logger.info(f"Inferring task on {device}")
+
+  # load data
+  data = HeavyDatasetForInfer(root=config["data_root"], data_index=config["data_index"], data_file=config["data_file"])
+
+  logger.info("")
+  logger.info(f"Dataset Info")
+  logger.info("=" * 80)
+  logger.info(f"Dataset to be inferred: {data}")
+  logger.info(f"> Size: {len(data)}")
+
+  data_loader = torch.utils.data.DataLoader(data, batch_size=config["batch"], collate_fn=HeavyDatasetForInfer.collate_fn)
+
+  if not config["interpretation"]:
+    if config["model_format"] == "model_object":
+      model = torch.load(config["model"], map_location=device)
+    elif config["model_format"] == "state_dict":
+      model = DeepRLI(
+        f_dropout_rate=config["f_dropout_rate"],
+        g_dropout_rate=config["g_dropout_rate"],
+        hidden_dim=config["hidden_dim"],
+        num_attention_heads=config["num_attention_heads"],
+        use_layer_norm=config["use_layer_norm"],
+        use_batch_norm=config["use_batch_norm"],
+        use_residual=config["use_residual"]
+      )
+      model.to(device)
+      model.load_state_dict(torch.load(config["model"], map_location=device))
+
+    model.eval()
+    p = [[], [], []]
+    for batch in data_loader:
+      batch = {k: v.to(device) for k, v in batch.items()}
+      result = model(batch)
+      for i in range(3):
+        p[i].extend(result[i].tolist())
+  else:
+    pathlib.Path(os.path.join(config["save_path"], "results")).mkdir(parents=True, exist_ok=True)
+    if config["model_format"] == "model_object":
+      model = torch.load(config["model"], map_location=device)
+    elif config["model_format"] == "state_dict":
+      model = DeepRLIForInterpretation(
+        f_dropout_rate=config["f_dropout_rate"],
+        g_dropout_rate=config["g_dropout_rate"],
+        hidden_dim=config["hidden_dim"],
+        num_attention_heads=config["num_attention_heads"],
+        use_layer_norm=config["use_layer_norm"],
+        use_batch_norm=config["use_batch_norm"],
+        use_residual=config["use_residual"]
+      )
+      model.to(device)
+      model.load_state_dict(torch.load(config["model"], map_location=device))
+
+    model.eval()
+    p = [[], [], []]
+    for j, batch in enumerate(data_loader):
+      batch = {k: v.to(device) for k, v in batch.items()}
+      result = model(batch)
+      torch.save(result, os.path.join(config["save_path"], "results", f"result_{j}.pth"))
+      for i in range(3):
+        p[i].extend(result["scores"][i].tolist())
+
+  inference_results = pd.read_csv(os.path.join(config["data_root"], config["data_index"]))
+  inference_results["scoring_score"] = p[0]
+  inference_results["docking_score"] = p[1]
+  inference_results["screening_score"] = p[2]
+  result_file = os.path.join(config["save_path"], config["data_index"])
+  pathlib.Path(os.path.dirname(result_file)).mkdir(parents=True, exist_ok=True)
+  inference_results.to_csv(result_file, float_format='%.8f', index=False)
+
+  logger.info("Inference complete. Congratulations!")
