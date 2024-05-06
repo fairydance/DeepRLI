@@ -1,7 +1,5 @@
 import os, sys, time, argparse, pathlib, logging, json
 from distutils.util import strtobool
-from tqdm import tqdm
-import numpy as np
 import pandas as pd
 import torch
 

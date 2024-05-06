@@ -14,7 +14,11 @@
   <p align="center">
     A Multi-objective Framework for Universal Protein–Ligand Interaction Prediction
     <br />
-    <a href="https://github.com/fairydance/DeepRLI"><strong>Explore the website »</strong></a>
+    <a href="https://github.com/fairydance/DeepRLI"><strong>GitHub</strong></a>
+    ·
+    <a href="https://zenodo.org/records/11116386"><strong>Zenodo</strong></a>
+    ·
+    <a href="https://arxiv.org/abs/2401.10806"><strong>arXiv</strong></a>
     <br />
     <br />
     <a href="https://doi.org/10.5281/zenodo.11116386">Training Datasets</a>
@@ -82,8 +86,8 @@ Python virtual environment needs to be created in advance.
   ```sh
   conda create -n deeprli python=3.11
   conda activate deeprli
-  conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-  conda install -c dglteam/label/cu118 dgl
+  conda install pytorch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 pytorch-cuda=11.8 -c pytorch -c nvidia
+  conda install -c dglteam/label/cu118 dgl==1.1.2.cu118
   conda install -c conda-forge rdkit
   ```
 
