@@ -88,7 +88,7 @@ Python virtual environment needs to be created in advance.
   conda activate deeprli
   conda install pytorch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 pytorch-cuda=11.8 -c pytorch -c nvidia
   conda install -c dglteam/label/cu118 dgl==1.1.2.cu118
-  conda install -c conda-forge rdkit
+  conda install -c conda-forge rdkit==2023.09.2
   ```
 
 ### Installation
