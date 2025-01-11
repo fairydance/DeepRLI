@@ -16,6 +16,7 @@ if __name__ == "__main__":
   parser.add_argument("--data-index", type=str, help="the path of an index file relative to the root")
   parser.add_argument("--data-file", type=str, help="the path of a data file relative to the root")
   parser.add_argument("--batch", type=int, help="batch size")
+  parser.add_argument("--num-workers", type=int, help="the number of subprocesses to use for data loading")
   parser.add_argument("--gpu-id", type=int, help="the id of gpu")
   parser.add_argument("--save-path", type=str, help="the path to deposit results")
   parser.add_argument("--f-dropout-rate", type=float, help="input feature dropout")
@@ -41,6 +42,7 @@ if __name__ == "__main__":
     "data_index",
     "data_file",
     "batch",
+    "num_workers",
     "gpu_id",
     "save_path",
     "f_dropout_rate",
@@ -53,6 +55,20 @@ if __name__ == "__main__":
   ]
 
   config.update({key: value for key in config_keys if (value:=getattr(args, key, None)) is not None})
+  if config.get("model") is None: config["model"] = "trained_model.state_dict.pth"
+  if config.get("model_format") is None: config["model_format"] = "state_dict"
+  if config.get("interpretation") is None: config["interpretation"] = False
+  if config.get("batch") is None: config["batch"] = 16
+  if config.get("num_workers") is None: config["num_workers"] = 32
+  if config.get("gpu_id") is None: config["gpu_id"] = 0
+  if config.get("save_path") is None: config["save_path"] = ""
+  if config.get("f_dropout_rate") is None: config["f_dropout_rate"] = 0.0
+  if config.get("g_dropout_rate") is None: config["g_dropout_rate"] = 0.0
+  if config.get("hidden_dim") is None: config["hidden_dim"] = 64
+  if config.get("num_attention_heads") is None: config["num_attention_heads"] = 8
+  if config.get("use_layer_norm") is None: config["use_layer_norm"] = False
+  if config.get("use_batch_norm") is None: config["use_batch_norm"] = True
+  if config.get("use_residual") is None: config["use_residual"] = True
 
   pathlib.Path(config["save_path"]).mkdir(parents=True, exist_ok=True)
 
@@ -90,7 +106,7 @@ if __name__ == "__main__":
   logger.info(f"Dataset to be inferred: {data}")
   logger.info(f"> Size: {len(data)}")
 
-  data_loader = torch.utils.data.DataLoader(data, batch_size=config["batch"], collate_fn=HeavyDatasetForInfer.collate_fn)
+  data_loader = torch.utils.data.DataLoader(data, batch_size=config["batch"], collate_fn=HeavyDatasetForInfer.collate_fn, num_workers=config["num_workers"])
 
   if not config["interpretation"]:
     if config["model_format"] == "model_object":

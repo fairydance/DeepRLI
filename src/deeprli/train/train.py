@@ -21,6 +21,7 @@ if __name__ == "__main__":
   parser.add_argument("--test-data-files", type=str, help="the path of test data files (relative to the root)")
   parser.add_argument("--epoch", type=int, help="training epochs")
   parser.add_argument("--batch", type=int, help="batch size")
+  parser.add_argument("--num-workers", type=int, help="the number of subprocesses to use for data loading")
   parser.add_argument("--initial-lr", type=float, help="initial learning rate")
   parser.add_argument("--lr-reduction-factor", type=float, help="learning rate reduction factor")
   parser.add_argument("--lr-reduction-patience", type=int, help="learning rate reduction patience")
@@ -57,6 +58,7 @@ if __name__ == "__main__":
     "test_data_files",
     "epoch",
     "batch",
+    "num_workers",
     "initial_lr",
     "lr_reduction_factor",
     "lr_reduction_patience",
@@ -79,6 +81,7 @@ if __name__ == "__main__":
   ]
   
   config.update({key: value for key in config_keys if (value:=getattr(args, key, None)) is not None})
+  if config.get("num_workers") is None: config["num_workers"] = 32
   if config.get("loss_fn") is None: config["loss_fn"] = "ContrastiveLoss"
   if config.get("seed") is None: config["seed"] = secrets.randbelow(1_000_000_000)
   if config.get("enable_data_parallel") is None: config["enable_data_parallel"] = False
@@ -154,10 +157,10 @@ if __name__ == "__main__":
   logger.info(f"Dataset for train and validation: {train_validation_data}")
   logger.info("Data splitting ...")
 
-  train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, shuffle=True)
-  validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn)
+  train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, shuffle=True, num_workers=config["num_workers"])
+  validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, num_workers=config["num_workers"])
   if config.get("test_data_root") is not None:
-    test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn)
+    test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, num_workers=config["num_workers"])
   else:
     test_data_loader = None
 

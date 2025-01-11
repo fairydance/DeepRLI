@@ -49,6 +49,12 @@
         <li><a href="#inference">Inference</a></li>
       </ul>
     </li>
+    <li>
+      <a href="#all-in-one">All in One</a>
+      <ul>
+        <li><a href="#inference-aio">Inference AIO</a></li>
+      </ul>
+    </li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
     <li><a href="#acknowledgments">Acknowledgments</a></li>
@@ -174,7 +180,6 @@ python infer.heavy.py --config "${CONFIG_FILE}"
 An example of the configuration file is as follows:
 ```json
 {
-  "model": "trained_model.pth",
   "data_root": "${DATA_ROOT}",
   "data_index": "${DATA_INDEX}",
   "batch": 30,
@@ -182,6 +187,28 @@ An example of the configuration file is as follows:
   "save_path": "${SAVE_PATH}"
 }
 ```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+
+<!-- ALL IN ONE -->
+## All in One
+
+To facilitate users, we also provide an all-in-one script. Based on this, users only need to provide the necessary inputs, and the program can automatically complete data processing and all subsequent procedures to obtain the desired results, eliminating the need for manual step-by-step processing.
+
+### Inference AIO
+
+The integrated script for inference, `aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py`, enables users to complete the entire process of data processing and inference with a single click by only providing a protein file in PDB format, a small molecule file in SDF format, and a trained model parameter file. An example of executing the script is as follows:
+
+```sh
+python aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py\
+  --receptor-file-path ${RECEPTOR_FILE_PATH}\
+  --ligand-file-path ${LIGAND_FILE_PATH}\
+  --model ${MODEL}
+```
+
+If these options are not provided, the script will automatically read `receptor.pdb`, `ligands.sdf` and `trained_model.state_dict.pth` in the current directory as inputs. More details about the input options can be viewed through the output of the `--help` option.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -199,7 +226,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 <!-- CONTACT -->
 ## Contact
 
-- Haoyu Lin (developer) - vileoy@pku.edu.cn
+- Haoyu Lin (developer) - hylin@pku.edu.cn
 - Jianfeng Pei (supervisor) - jfpei@pku.edu.cn
 - Luhua Lai (supervisor) - lhlai@pku.edu.cn
 
