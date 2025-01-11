@@ -199,16 +199,17 @@ To facilitate users, we also provide an all-in-one script. Based on this, users 
 
 ### Inference AIO
 
-The integrated script for inference, `aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py`, enables users to complete the entire process of data processing and inference with a single click by only providing a protein file in PDB format, a small molecule file in SDF format, and a trained model parameter file. An example of executing the script is as follows:
+The integrated script for inference, `aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py`, enables users to complete the entire process of data processing and inference with a single click by only providing a protein file in PDB format, a small molecule file in SDF format, a known ligand file in SDF format, and a trained model parameter file. The known ligand file contains the ligands already discovered for the target under study, and the program will truncate the binding pocket based on it. An example of executing the script is as follows:
 
 ```sh
 python aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py\
-  --receptor-file-path ${RECEPTOR_FILE_PATH}\
-  --ligand-file-path ${LIGAND_FILE_PATH}\
-  --model ${MODEL}
+  --receptor-file-path "${RECEPTOR_FILE_PATH}"\
+  --ligand-file-path "${LIGAND_FILE_PATH}"\
+  --known-ligand-file-path "${KNOWN_LIGAND_FILE_PATH}"\
+  --model "${MODEL}"
 ```
 
-If these options are not provided, the script will automatically read `receptor.pdb`, `ligands.sdf` and `trained_model.state_dict.pth` in the current directory as inputs. More details about the input options can be viewed through the output of the `--help` option.
+If these options are not provided, the script will automatically read `receptor.pdb`, `ligands.sdf`, `known_ligands.sdf` and `trained_model.state_dict.pth` in the current directory as inputs. More details about the input options can be viewed through the output of the `--help` option.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
