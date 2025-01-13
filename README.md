@@ -206,7 +206,8 @@ python aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py\
   --receptor-file-path "${RECEPTOR_FILE_PATH}"\
   --ligand-file-path "${LIGAND_FILE_PATH}"\
   --known-ligand-file-path "${KNOWN_LIGAND_FILE_PATH}"\
-  --model "${MODEL}"
+  --model "${MODEL}"\
+  --save-path "${SAVE_PATH}"
 ```
 
 If these options are not provided, the script will automatically read `receptor.pdb`, `ligands.sdf`, `known_ligands.sdf` and `trained_model.state_dict.pth` in the current directory as inputs. More details about the input options can be viewed through the output of the `--help` option.

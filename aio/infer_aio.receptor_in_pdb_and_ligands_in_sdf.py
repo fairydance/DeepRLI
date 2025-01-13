@@ -40,7 +40,7 @@ if __name__ == "__main__":
     config = {}
 
   config_keys = [
-    "instance_name"
+    "instance_name",
     "receptor_file_path",
     "ligand_file_path",
     "known_ligand_file_path",
@@ -102,7 +102,7 @@ if __name__ == "__main__":
   now = time.localtime()
   timestamp = "%04d-%02d-%02d %02d:%02d:%02d" % (now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
   logger.info(f"Date: {timestamp}")
-  logger.info(args)
+  logger.info(f"Config: {config}")
 
   # build the preset data directory
   pathlib.Path(os.path.join(config["save_path"], "data", "index", config["instance_name"])).mkdir(parents=True, exist_ok=True)
