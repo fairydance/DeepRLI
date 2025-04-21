@@ -196,7 +196,7 @@ class ReceptorDataset(Dataset):
 
   def process(self):
     """Main processing pipeline"""
-    processed_index_rows = []
+    data_index_processed = []
     
     for _, index_row in self.data_index_df.iterrows():
       instance_name = index_row["instance_name"]
@@ -229,7 +229,7 @@ class ReceptorDataset(Dataset):
         with open(save_path, "wb") as f:
           pickle.dump(receptor, f)
         
-        processed_index_rows.append(list(index_row))
+        data_index_processed.append(list(index_row))
         logger.info(f"Processed {instance_name} ({len(receptor.positions)} atoms)")
 
       except Exception as e:
@@ -237,7 +237,7 @@ class ReceptorDataset(Dataset):
 
     # Save processing metadata
     data_index_name, data_index_ext = os.path.splitext(self.data_index)
-    pd.DataFrame(processed_index_rows, columns=self.data_index_df.columns).to_csv(
+    pd.DataFrame(data_index_processed, columns=self.data_index_df.columns).to_csv(
       Path(self.root)/f"{data_index_name}.processed{data_index_ext}",
       float_format='%.8f', index=False
     )

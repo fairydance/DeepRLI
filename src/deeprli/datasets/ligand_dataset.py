@@ -1,4 +1,6 @@
 import os, pickle, logging, pathlib, json, gzip
+from pathlib import Path
+from types import SimpleNamespace
 from collections import defaultdict
 import numpy as np
 import pandas as pd
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 class LigandDataset(Dataset):
   '''Ligand Dataset'''
   def __init__(self, root=None, transform=None, pre_transform=None, pre_filter=None,
-               data_index="index/data.csv", ligand_file_types=["mol2", "sdf"], dist_cutoff=6.5):
+               data_index="index/data.csv", ligand_file_types=["sdf"], dist_cutoff=6.5):
     self.data_index = data_index
     self.ligand_file_types = ligand_file_types
     self.dist_cutoff = dist_cutoff
@@ -34,11 +36,11 @@ class LigandDataset(Dataset):
 
   @property
   def raw_file_names(self):
-    return [complex_path for complex_path in self.data_index_df["complex_path"]]
+    return [str(Path(row["instance_name"]/"ligands"/row["ligand_name"])) for _, row in self.data_index_df.iterrows()]
 
   @property
   def processed_file_names(self):
-    return [f"{complex_path}.pkl" for complex_path in self.data_index_df["complex_path"]]
+    return [str(Path(row["instance_name"]/"ligands"/f'{row["ligand_name"]}.pkl')) for _, row in self.data_index_df.iterrows()]
   
   def modify_symbol(self, symbol, mode=0):
     '''map atom symbol to allowable type'''
@@ -86,15 +88,14 @@ class LigandDataset(Dataset):
       d["feature"] = f(d)
   
   def data_maker(self, index_row):
-    complex_path = index_row["complex_path"]
-    complex_dir, ligand_name = complex_path.rsplit('/', 1)
+    instance_name, ligand_name = index_row["instance_name"], index_row["ligand_name"]
     
     ## Parse Ligand
-    ligand = Attributes({"rdmol": None})
+    ligand = SimpleNamespace(rdmol=None)
     for ligand_file_type in self.ligand_file_types:
-      ligand_file_path = os.path.join(self.raw_dir, complex_dir, "ligands", f"{ligand_name}.{ligand_file_type}")
+      ligand_file_path = os.path.join(self.raw_dir, instance_name, "ligands", f"{ligand_name}.{ligand_file_type}")
       if not os.path.exists(ligand_file_path):
-        logger.info(f"[{complex_dir}] Ligand File Not Found (.{ligand_file_type}): {ligand_file_path}")
+        logger.info(f"[{instance_name}] Ligand File Not Found (.{ligand_file_type}): {ligand_file_path}")
       else:
         if ligand_file_type.split('.')[-1] == "sdf":
           ligand = Attributes({"rdmol": Chem.SDMolSupplier(ligand_file_path)[0]})
@@ -103,7 +104,7 @@ class LigandDataset(Dataset):
         elif ligand_file_type.split('.')[-1] == "pdb":
           ligand = Attributes({"rdmol": Chem.MolFromPDBFile(ligand_file_path)})
         if ligand.rdmol is None:
-          logger.info(f"[{complex_dir}] Ligand Molecule Parsing Failed (.{ligand_file_type}): {ligand_file_path}")
+          logger.info(f"[{instance_name}] Ligand Molecule Parsing Failed (.{ligand_file_type}): {ligand_file_path}")
         else:
           break
 
@@ -121,8 +122,8 @@ class LigandDataset(Dataset):
     data_index_processed = []
     
     for i, index_row in self.data_index_df.iterrows():
-      complex_path = index_row["complex_path"]
-      complex_dir, ligand_name = complex_path.rsplit('/', 1)
+      instance_name, ligand_name = index_row["instance_name"], index_row["ligand_name"]
+
       try:
         data = self.data_maker(index_row)
       except Exception as e:
@@ -130,7 +131,7 @@ class LigandDataset(Dataset):
         logger.info(e)
 
       if data is None:
-        logger.info(f"[{complex_path}] fail")
+        logger.info(f"[{instance_name}] fail")
         continue
 
       if self.pre_filter is not None and not self.pre_filter(data):
@@ -139,14 +140,14 @@ class LigandDataset(Dataset):
       if self.pre_transform is not None:
         data = self.pre_transform(data)
 
-      save_dir = os.path.join(self.processed_dir, complex_dir, "ligands")
+      save_dir = os.path.join(self.processed_dir, instance_name, "ligands")
       pathlib.Path(save_dir).mkdir(parents=True, exist_ok=True)
       with open(os.path.join(save_dir, f"{ligand_name}.pkl"), "wb") as f:
         pickle.dump(data, f)
 
       data_index_processed.append(list(index_row))
 
-      logger.info(f"[{index_row['complex_path']}] Success, Mol(num_atoms={data.rdmol.GetNumAtoms()})")
+      logger.info(f"[{instance_name}/ligands/{ligand_name}] Success, Mol(num_atoms={data.rdmol.GetNumAtoms()})")
     
     data_index_processed_df = pd.DataFrame(data_index_processed, columns=self.data_index_df.columns)
     data_index_name, data_index_ext = os.path.splitext(self.data_index)
@@ -156,7 +157,8 @@ class LigandDataset(Dataset):
     return len(self.data_index_df)
 
   def get(self, idx):
-    complex_path = self.data_index_df["complex_path"][idx]
-    with open(os.path.join(self.processed_dir, f"{complex_path}.pkl"), "rb") as f:
+    index_row = self.data_index_df.iloc[idx]
+    instance_name, ligand_name = index_row["instance_name"], index_row["ligand_name"]
+    with open(os.path.join(self.processed_dir,  instance_name, "ligands", f"{ligand_name}.pkl"), "rb") as f:
       data = pickle.load(f)
     return data
