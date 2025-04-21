@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class LigandDataset(Dataset):
   '''Ligand Dataset'''
   def __init__(self, root=None, transform=None, pre_transform=None, pre_filter=None,
-               data_index="index/data.csv", ligand_file_types=["sdf"], dist_cutoff=6.5,
+               data_index="index/ligands.csv", ligand_file_types=["sdf"], dist_cutoff=6.5,
                receptor_cache_maxlen=100):
     self.data_index = data_index
     self.ligand_file_types = ligand_file_types

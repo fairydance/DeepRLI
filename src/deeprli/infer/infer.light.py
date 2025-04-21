@@ -100,7 +100,7 @@ if __name__ == "__main__":
   logger.info(f"Inferring task on {device}")
 
   # load data
-  data = LightDatasetForInfer(root=config["data_root"], receptor_data_file=config["receptor_data_file"], ligand_data_index=config["ligand_data_index"], ligand_data_files=config["ligand_data_files"].split(','))
+  data = LightDatasetForInfer(root=config["data_root"], data_index=config["ligand_data_index"])
 
   logger.info("")
   logger.info(f"Dataset Info")

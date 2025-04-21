@@ -170,7 +170,7 @@ if __name__ == "__main__":
 
   ## load data
   data = LightDatasetForInfer(root=os.path.join(config["save_path"], "data"), receptor_data_file=f'compiled/{config["instance_name"]}/receptor.processed.pkl',
-                              ligand_data_index=f'index/{config["instance_name"]}/ligands.processed.csv', ligand_data_files=[f'compiled/{config["instance_name"]}/ligands.processed.pkl'])
+                              data_index=f'index/{config["instance_name"]}/ligands.processed.csv', ligand_data_files=[f'compiled/{config["instance_name"]}/ligands.processed.pkl'])
 
   logger.info("")
   logger.info(f"Dataset Info")
