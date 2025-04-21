@@ -1,7 +1,6 @@
 import os
 import logging
 import pickle
-import pathlib
 import numpy as np
 import pandas as pd
 from ast import literal_eval
@@ -9,17 +8,21 @@ from collections import defaultdict
 from scipy.spatial import distance_matrix
 from rdkit import Chem, RDConfig
 from rdkit.Chem import ChemicalFeatures
+from pathlib import Path
 
 from deeprli.data import Dataset
 from deeprli.base import Attributes, ChemicalElements
 
 logger = logging.getLogger(__name__)
 
-
 class ReceptorDataset(Dataset):
-  """Dataset class for processing receptor structures and binding site information.
-
-  Handles both ligand-based and box-based binding site detection.
+  """Dataset class for processing receptor structures with residue-level binding site detection.
+  
+  Features:
+  - Processes PDB files residue-by-residue
+  - Retains entire residue if any atom meets distance criteria
+  - Supports both ligand-based and box-based binding site detection
+  - Preserves original PDB formatting in output
   """
 
   def __init__(self, root=None, transform=None, pre_transform=None, pre_filter=None,
@@ -30,8 +33,9 @@ class ReceptorDataset(Dataset):
       root (str): Root directory for dataset storage
       data_index (str): Path to receptor index file
       ligand_file_types (list): Supported ligand file extensions
-      dist_cutoff (float): Distance cutoff for edge creation (Å)
-      bs_cutoff (float): Binding site detection cutoff (Å)
+      dist_cutoff (float): Distance cutoff for graph edge creation (Å)
+      bs_cutoff (float): Binding site detection cutoff (Å). Use larger values (e.g., 8.0)
+        for virtual screening with few known ligands to ensure complete residue inclusion.
     """
     self.data_index = data_index
     self.ligand_file_types = ligand_file_types
@@ -50,10 +54,8 @@ class ReceptorDataset(Dataset):
 
     # Van der Waals radii for atom types
     self.vdw_radii = {
-      'C': 2.0, 'N': 1.7, 'O': 1.6, 'F': 1.5,
-      'Si': 2.2, 'P': 2.1, 'S': 2.0, 'Cl': 1.8,
-      'Br': 2.0, 'I': 2.2, 'At': 2.3,
-      'Met': 1.2, 'Unk': 1.2
+      'C': 2.0, 'N': 1.7, 'O': 1.6, 'F': 1.5, 'Si': 2.2, 'P': 2.1, 'S': 2.0,
+      'Cl': 1.8, 'Br': 2.0, 'I': 2.2, 'At': 2.3, 'Met': 1.2, 'Unk': 1.2
     }
 
     # Chemical feature factory initialization
@@ -66,223 +68,178 @@ class ReceptorDataset(Dataset):
   @property
   def raw_file_names(self):
     """List of raw file paths based on instance names."""
-    return [row["instance_name"] for _, row in self.data_index_df.iterrows()]
+    return [str(Path(row["instance_name"]/"receptor.pdb")) for _, row in self.data_index_df.iterrows()]
 
   @property
   def processed_file_names(self):
     """List of processed file paths."""
-    return [f"{row['instance_name']}.pkl" for _, row in self.data_index_df.iterrows()]
-
-  def modify_symbol(self, symbol, mode=0):
-    """Normalize atom symbols to limited chemical types.
-
-    Args:
-      symbol (str): Original atom symbol
-      mode (int): Aggressiveness of normalization
-                  0: Basic metal detection
-                  1: Advanced normalization
-    """
-    if symbol in ChemicalElements.metals:
-      return 'Met'
-    if mode != 0:
-      if symbol == 'Se':
-        return 'S'
-      elif symbol not in ('C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'Br', 'I', 'At'):
-        return 'Unk'
-    return symbol
-
-  def extract_features(self, molecule):
-    """Extract chemical features from RDKit molecule."""
-    molecule.symbols = [atom.GetSymbol() for atom in molecule.rdmol.GetAtoms()]
-    molecule.positions = molecule.rdmol.GetConformer().GetPositions()
-
-    # Calculate chemical features
-    features = self.feature_factory.GetFeaturesForMol(molecule.rdmol)
-    molecule.feature_dict = defaultdict(list)
-    for feature in features:
-      molecule.feature_dict[feature.GetFamily()].extend(feature.GetAtomIds())
-
-  def process_residues(self, receptor_path, index_row):
-    """Process receptor residues to identify binding site atoms.
-
-    Uses either ligand positions or box parameters based on input availability.
+    return [str(Path(row["instance_name"]/"receptor.pkl")) for _, row in self.data_index_df.iterrows()]
+  
+  def _process_residues(self, receptor_path, index_row):
+    """Process PDB file residue-by-residue with atomic distance checks.
+    
+    Returns:
+      str: PDB block containing all residues with atoms within cutoff distance
     """
     # Load ligand positions if available
-    ligand_positions = []
-    if index_row["known_ligand_names"]:
-      lig_dir = os.path.join(
-        self.raw_dir, index_row["instance_name"], "ligands")
-      for lig_name in index_row["known_ligand_names"]:
-        for ext in self.ligand_file_types:
-          lig_path = os.path.join(lig_dir, f"{lig_name}.{ext}")
-          if os.path.exists(lig_path):
-            if ext == "sdf":
-              mol = Chem.SDMolSupplier(lig_path)[0]
-            elif ext == "mol2":
-              mol = Chem.MolFromMol2File(lig_path)
-            elif ext == "pdb":
-              mol = Chem.MolFromPDBFile(lig_path)
-            if mol is not None:
-              mol = Chem.RemoveHs(mol)
-              ligand_positions.extend(mol.GetConformer().GetPositions())
-              break
+    ligand_coords = self._load_ligand_coordinates(index_row) if index_row["known_ligand_names"] else None
+    
+    # Calculate box boundaries if provided
+    box_min, box_max = self._calculate_box_boundaries(index_row) if index_row["box_center"] is not None else (None, None)
 
-    # Determine processing method
-    if index_row["box_center"] is not None and index_row["box_size"] is not None:
-      return self._process_with_box(receptor_path, index_row)
-    elif ligand_positions:
-      return self._process_with_ligands(receptor_path, ligand_positions)
-    else:
-      logger.error(f"No binding site info for {index_row['instance_name']}")
-      return None
-
-  def _process_with_ligands(self, receptor_path, ligand_positions):
-    """Identify residues near ligand atoms."""
-    pocket_pdb_block = ""
-    ligand_positions = np.array(ligand_positions)
+    pocket_lines = []
+    current_res = []
+    current_coords = []
+    res_seq = None
 
     with open(receptor_path, "r") as f:
-      current_res = []
-      res_coords = []
-      res_seq = None
-
       for line in f:
-        if line.startswith("ATOM") or (line.startswith("HETATM")
-                                       and line[17:20] != "HOH"):
-          atom_coord = np.array([
-            float(line[30:38]),
-            float(line[38:46]),
-            float(line[46:54])
-          ])
-          current_res.append(line)
-          res_coords.append(atom_coord)
+        if self._is_relevant_atom_line(line):
+          atom_coord = self._parse_atom_coordinates(line)
+          line_res_seq = int(line[22:26])
 
-          # Check distance to ligands
-          distances = np.linalg.norm(
-            ligand_positions - atom_coord,
-            axis=1
-          )
-          if np.any(distances < self.bs_cutoff):
-            pocket_pdb_block += "".join(current_res)
-            current_res = []
-            res_coords = []
+          if line_res_seq != res_seq:  # New residue
+            if current_res:  # Process previous residue
+              if self._residue_meets_criteria(current_coords, ligand_coords, box_min, box_max):
+                pocket_lines.extend(current_res)
+            # Start new residue
+            current_res = [line]
+            current_coords = [atom_coord]
+            res_seq = line_res_seq
+          else:  # Same residue
+            current_res.append(line)
+            current_coords.append(atom_coord)
 
-      # Handle last residue
-      if res_coords:
-        res_coords = np.array(res_coords)
-        distances = np.linalg.norm(
-          ligand_positions[:, None] - res_coords,
-          axis=2
-        )
-        if np.any(distances < self.bs_cutoff):
-          pocket_pdb_block += "".join(current_res)
+      # Process final residue
+      if current_res and self._residue_meets_criteria(current_coords, ligand_coords, box_min, box_max):
+        pocket_lines.extend(current_res)
 
-    return pocket_pdb_block
+    return "".join(pocket_lines)
+  
+  def _is_relevant_atom_line(self, line):
+    """Filter relevant atom lines (ATOM/HETATM, non-water, non-hydrogen)"""
+    return (line.startswith("ATOM") or 
+            (line.startswith("HETATM") and line[17:20] != "HOH")) and \
+            line[76:78].strip() != 'H'
 
-  def _process_with_box(self, receptor_path, index_row):
-    """Identify residues within specified box region."""
-    box_center = np.array(index_row["box_center"])
-    box_size = np.array(index_row["box_size"])
-    half_size = box_size / 2
-    bounds = np.array([
-      box_center - half_size - self.bs_cutoff,
-      box_center + half_size + self.bs_cutoff
+  def _parse_atom_coordinates(self, line):
+    """Extract atomic coordinates from PDB line"""
+    return np.array([
+      float(line[30:38]),  # x
+      float(line[38:46]),  # y
+      float(line[46:54])   # z
     ])
 
-    pocket_pdb_block = ""
-    current_res = []
+  def _load_ligand_coordinates(self, index_row):
+    """Load coordinates from all known ligands"""
+    coords = []
+    instance_dir = Path(self.raw_dir)/index_row["instance_name"]
+    
+    for lig_name in index_row["known_ligand_names"]:
+      for ext in self.ligand_file_types:
+        lig_path = instance_dir/"ligands"/f"{lig_name}.{ext}"
+        if lig_path.exists():
+          if ext == "sdf":
+            mol = Chem.SDMolSupplier(lig_path)[0]
+          elif ext == "mol2":
+            mol = Chem.MolFromMol2File(lig_path)
+          elif ext == "pdb":
+            mol = Chem.MolFromPDBFile(lig_path)
+          if mol:
+            mol = Chem.RemoveHs(mol)
+            coords.extend(mol.GetConformer().GetPositions())
+            break
+    return np.array(coords) if coords else None
 
-    with open(receptor_path, "r") as f:
-      for line in f:
-        if (line.startswith("ATOM") or (line.startswith("HETATM") and line[17:20] != "HOH")) and line[76:78].strip() != 'H':
-          atom_coord = np.array([float(line[30:38]), float(line[38:46]), float(line[46:54])])
-          # Check if atom is within expanded box
-          if np.all(atom_coord >= bounds[0]) and np.all(atom_coord <= bounds[1]):
-            current_res.append(line)
-          else:
-            if current_res:
-              pocket_pdb_block += "".join(current_res)
-              current_res = []
+  def _calculate_box_boundaries(self, index_row):
+    """Calculate expanded box boundaries including cutoff"""
+    center = index_row["box_center"]
+    size = index_row["box_size"]
+    half_size = size/2 + self.bs_cutoff
+    return center - half_size, center + half_size
 
-      # Add remaining residues
-      if current_res:
-        pocket_pdb_block += "".join(current_res)
-
-    return pocket_pdb_block
-
-  def data_maker(self, index_row):
-    """Main processing pipeline for a receptor instance."""
-    instance_name = index_row["instance_name"]
-    receptor_path = os.path.join(
-      self.raw_dir,
-      instance_name,
-      "receptor.pdb"
-    )
-
-    # Process binding site residues
-    pocket_pdb_block = self.process_residues(receptor_path, index_row)
-    if not pocket_pdb_block:
-      logger.error(f"Failed to process binding site for {instance_name}")
-      return None
-
-    # Create receptor molecule
+  def _residue_meets_criteria(self, residue_coords, ligand_coords, box_min, box_max):
+    """Check if any atom in residue meets inclusion criteria"""
+    # Priority: box > ligands
+    if box_min is not None:
+      return np.any((residue_coords > box_min) & (residue_coords < box_max))
+    if ligand_coords is not None:
+      distances = np.linalg.norm(
+        ligand_coords[:, np.newaxis] - residue_coords,
+        axis=2
+      )
+      return np.any(distances < self.bs_cutoff)
+    return False
+  
+  def _process_receptor(self, instance_name, pocket_pdb):
+    """Create receptor object from PDB block"""
     receptor = Attributes()
-    receptor.rdmol = Chem.MolFromPDBBlock(pocket_pdb_block)
+    receptor.rdmol = Chem.MolFromPDBBlock(pocket_pdb)
     if receptor.rdmol is None:
-      logger.error(f"Failed to parse receptor for {instance_name}")
-      return None
-
-    # Extract features and properties
-    receptor.pocket_pdb_block = pocket_pdb_block
+      raise ValueError(f"Failed to parse receptor {instance_name}")
+    
+    # Process receptor properties
+    receptor.pocket_pdb_block = pocket_pdb
     receptor.rdmol = Chem.RemoveHs(receptor.rdmol)
-    self.extract_features(receptor)
-    receptor.distance_matrix = distance_matrix(
-      receptor.positions,
-      receptor.positions
-    ).tolist()
-
+    receptor.symbols = [atom.GetSymbol() for atom in receptor.rdmol.GetAtoms()]
+    receptor.positions = receptor.rdmol.GetConformer().GetPositions()
+    self._extract_features(receptor)
+    receptor.distance_matrix = distance_matrix(receptor.positions, receptor.positions).tolist()
     return receptor
 
-  def process(self):
-    """Batch processing of all receptor instances."""
-    processed_data = []
+  def _extract_features(self, molecule):
+    """Extract chemical features using RDKit feature factory"""
+    features = self.feature_factory.GetFeaturesForMol(molecule.rdmol)
+    molecule.feature_dict = defaultdict(list)
+    for feat in features:
+      molecule.feature_dict[feat.GetFamily()].extend(feat.GetAtomIds())
 
+  def process(self):
+    """Main processing pipeline"""
+    processed_rows = []
+    
     for _, row in self.data_index_df.iterrows():
       instance_name = row["instance_name"]
       try:
-        receptor_data = self.data_maker(row)
-        if receptor_data is None:
+        # Validate input
+        receptor_path = Path(self.raw_dir)/instance_name/"receptor.pdb"
+        if not receptor_path.exists():
+          logger.error(f"Receptor file missing: {receptor_path}")
           continue
 
-        if self.pre_filter and not self.pre_filter(receptor_data):
+        # Process binding site
+        pocket_pdb = self._process_residues(str(receptor_path), row)
+        if not pocket_pdb:
+          logger.warning(f"No binding site detected for {instance_name}")
           continue
 
+        # Create receptor object
+        receptor = self._process_receptor(instance_name, pocket_pdb)
+        
+        # Apply filters/transforms
+        if self.pre_filter and not self.pre_filter(receptor):
+          continue
         if self.pre_transform:
-          receptor_data = self.pre_transform(receptor_data)
+          receptor = self.pre_transform(receptor)
 
-        # Save processed data
-        save_path = os.path.join(
-          self.processed_dir,
-          f"{instance_name}.pkl"
-        )
+        # Save results
+        save_dir = Path(self.processed_dir)/instance_name
+        Path(save_dir).mkdir(parents=True, exist_ok=True)
+        save_path = save_dir/"receptor.pkl"
         with open(save_path, "wb") as f:
-          pickle.dump(receptor_data, f)
-
-        processed_data.append(row)
-        logger.info(
-          f"Processed {instance_name} "
-          f"(Atoms: {receptor_data.rdmol.GetNumAtoms()})"
-        )
+          pickle.dump(receptor, f)
+        
+        processed_rows.append(list(row))
+        logger.info(f"Processed {instance_name} ({len(receptor.positions)} atoms)")
 
       except Exception as e:
         logger.error(f"Failed processing {instance_name}: {str(e)}")
 
-    # Save processed index
-    processed_df = pd.DataFrame(processed_data)
-    index_name = os.path.splitext(self.data_index)[0]
-    processed_df.to_csv(
-      os.path.join(self.root, f"{index_name}.processed.csv"),
-      index=False
+    # Save processing metadata
+    data_index_name, data_index_ext = os.path.splitext(self.data_index)
+    pd.DataFrame(processed_rows, columns=self.data_index_df.columns).to_csv(
+      Path(self.root)/f"{data_index_name}.processed{data_index_ext}",
+      float_format='%.8f', index=False
     )
 
   def len(self):
@@ -290,5 +247,5 @@ class ReceptorDataset(Dataset):
 
   def get(self, idx):
     instance_name = self.data_index_df.iloc[idx]["instance_name"]
-    with open(os.path.join(self.processed_dir, f"{instance_name}.pkl"), "rb") as f:
+    with open(Path(self.processed_dir)/instance_name/"receptor.pkl", "rb") as f:
       return pickle.load(f)
