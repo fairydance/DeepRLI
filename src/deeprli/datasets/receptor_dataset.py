@@ -4,6 +4,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from ast import literal_eval
+from types import SimpleNamespace
 from collections import defaultdict
 from scipy.spatial import distance_matrix
 from rdkit import Chem, RDConfig
@@ -11,7 +12,6 @@ from rdkit.Chem import ChemicalFeatures
 from pathlib import Path
 
 from deeprli.data import Dataset
-from deeprli.base import Attributes, ChemicalElements
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ class ReceptorDataset(Dataset):
   
   def _process_receptor(self, instance_name, pocket_pdb):
     """Create receptor object from PDB block"""
-    receptor = Attributes()
+    receptor = SimpleNamespace()
     receptor.rdmol = Chem.MolFromPDBBlock(pocket_pdb)
     if receptor.rdmol is None:
       raise ValueError(f"Failed to parse receptor {instance_name}")
@@ -196,10 +196,10 @@ class ReceptorDataset(Dataset):
 
   def process(self):
     """Main processing pipeline"""
-    processed_rows = []
+    processed_index_rows = []
     
-    for _, row in self.data_index_df.iterrows():
-      instance_name = row["instance_name"]
+    for _, index_row in self.data_index_df.iterrows():
+      instance_name = index_row["instance_name"]
       try:
         # Validate input
         receptor_path = Path(self.raw_dir)/instance_name/"receptor.pdb"
@@ -208,7 +208,7 @@ class ReceptorDataset(Dataset):
           continue
 
         # Process binding site
-        pocket_pdb = self._process_residues(str(receptor_path), row)
+        pocket_pdb = self._process_residues(str(receptor_path), index_row)
         if not pocket_pdb:
           logger.warning(f"No binding site detected for {instance_name}")
           continue
@@ -229,7 +229,7 @@ class ReceptorDataset(Dataset):
         with open(save_path, "wb") as f:
           pickle.dump(receptor, f)
         
-        processed_rows.append(list(row))
+        processed_index_rows.append(list(index_row))
         logger.info(f"Processed {instance_name} ({len(receptor.positions)} atoms)")
 
       except Exception as e:
@@ -237,7 +237,7 @@ class ReceptorDataset(Dataset):
 
     # Save processing metadata
     data_index_name, data_index_ext = os.path.splitext(self.data_index)
-    pd.DataFrame(processed_rows, columns=self.data_index_df.columns).to_csv(
+    pd.DataFrame(processed_index_rows, columns=self.data_index_df.columns).to_csv(
       Path(self.root)/f"{data_index_name}.processed{data_index_ext}",
       float_format='%.8f', index=False
     )
