@@ -76,6 +76,9 @@ The architecture of DeepRLI is illustrated in Figure 1.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+> [!NOTE]  
+> This document is currently applicable to [Release v1.0.1](https://github.com/fairydance/DeepRLI/releases/tag/v1.0.1).
+
 
 
 <!-- GETTING STARTED -->

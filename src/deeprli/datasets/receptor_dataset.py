@@ -3,15 +3,18 @@ import logging
 import pickle
 import numpy as np
 import pandas as pd
+import networkx as nx
+from pathlib import Path
 from ast import literal_eval
 from types import SimpleNamespace
 from collections import defaultdict
 from scipy.spatial import distance_matrix
 from rdkit import Chem, RDConfig
 from rdkit.Chem import ChemicalFeatures
-from pathlib import Path
 
+from deeprli.base import ChemicalElements
 from deeprli.data import Dataset
+from deeprli.utils import judge_noncovalent_interaction_type
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,17 @@ class ReceptorDataset(Dataset):
   def processed_file_names(self):
     """List of processed file paths."""
     return [str(Path(row["instance_name"]/"receptor.pkl")) for _, row in self.data_index_df.iterrows()]
+  
+  def modify_symbol(self, symbol, mode=0):
+    '''map atom symbol to allowable type'''
+    if symbol in ChemicalElements.metals:
+      return 'Met'
+    if mode != 0:
+      if symbol == 'Se':
+        return 'S'
+      elif symbol not in ('C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'Br', 'I', 'At'):
+        return 'Unk'
+    return symbol
   
   def _process_residues(self, receptor_path, index_row):
     """Process PDB file residue-by-residue with atomic distance checks.
@@ -185,6 +199,36 @@ class ReceptorDataset(Dataset):
     receptor.positions = receptor.rdmol.GetConformer().GetPositions()
     self._extract_features(receptor)
     receptor.distance_matrix = distance_matrix(receptor.positions, receptor.positions).tolist()
+    receptor.graph = nx.DiGraph()
+
+    # Create receptor nodes
+    n = receptor.rdmol.GetNumAtoms()
+    for i in range(n):
+      receptor.graph.add_node(i, is_ligand=False, symbol=self.modify_symbol(receptor.symbols[i]),
+        vdw_radii=self.vdw_radii[self.modify_symbol(receptor.symbols[i], mode=1)],
+        hybridization=receptor.rdmol.GetAtomWithIdx(i).GetHybridization().name,
+        formal_charge=receptor.rdmol.GetAtomWithIdx(i).GetFormalCharge(),
+        degree=receptor.rdmol.GetAtomWithIdx(i).GetDegree(),
+        is_donor=True if i in receptor.feature_dict["Donor"] else False,
+        is_acceptor=True if i in receptor.feature_dict["Acceptor"] else False,
+        is_neg_ionizable=True if i in receptor.feature_dict["NegIonizable"] else False,
+        is_pos_ionizable=True if i in receptor.feature_dict["PosIonizable"] else False,
+        is_zn_binder=True if i in receptor.feature_dict["ZnBinder"] else False,
+        is_aromatic=True if i in receptor.feature_dict["Aromatic"] else False,
+        is_hydrophobe=True if i in receptor.feature_dict["Hydrophobe"] else False,
+        is_lumped_hydrophobe=True if i in receptor.feature_dict["LumpedHydrophobe"] else False)
+      
+    # Create receptor edges
+    for i in range(n):
+      for j in range(i + 1, n):
+        distance = receptor.distance_matrix[i][j]
+        bond = receptor.rdmol.GetBondBetweenAtoms(i, j)
+        if bond is not None:
+          receptor.graph.add_edge(i, j, is_intermolecular=False, is_covalent=True, bond_type=bond.GetBondType().name, distance=distance, interaction_type=[False, False, False])
+        elif distance < self.dist_cutoff:
+          receptor.graph.add_edge(i, j, is_intermolecular=False, is_covalent=False, bond_type="NON-COVALENT", distance=distance,
+            interaction_type=judge_noncovalent_interaction_type(receptor.graph, i, j))
+      
     return receptor
 
   def _extract_features(self, molecule):

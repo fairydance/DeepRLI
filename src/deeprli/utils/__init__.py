@@ -2,7 +2,8 @@ import torch
 import torch.linalg as LA
 
 from deeprli.base import ChemicalElements
-from .makedirs import *
+from .dict_queue import DictQueue
+from .makedirs import makedirs
 
 
 def is_hydrophobic_interaction(g, i, j):

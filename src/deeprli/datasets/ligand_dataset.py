@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from collections import defaultdict
 import numpy as np
 import pandas as pd
+from scipy.spatial import distance_matrix
 from rdkit import Chem, RDConfig
 from rdkit.Chem import ChemicalFeatures, Descriptors
 import networkx as nx
@@ -12,14 +13,15 @@ import torch
 
 from deeprli.data import Dataset
 from deeprli.base import Attributes, ChemicalElements
-from deeprli.utils import one_hot_encoding
+from deeprli.utils import DictQueue, judge_noncovalent_interaction_type
 
 logger = logging.getLogger(__name__)
 
 class LigandDataset(Dataset):
   '''Ligand Dataset'''
   def __init__(self, root=None, transform=None, pre_transform=None, pre_filter=None,
-               data_index="index/data.csv", ligand_file_types=["sdf"], dist_cutoff=6.5):
+               data_index="index/data.csv", ligand_file_types=["sdf"], dist_cutoff=6.5,
+               receptor_cache_maxlen=100):
     self.data_index = data_index
     self.ligand_file_types = ligand_file_types
     self.dist_cutoff = dist_cutoff
@@ -31,6 +33,8 @@ class LigandDataset(Dataset):
     fdefName = os.path.join(RDConfig.RDDataDir, "BaseFeatures.fdef")
     self.feature_factory = ChemicalFeatures.BuildFeatureFactory(fdefName)
     self.ptable = Chem.GetPeriodicTable()
+
+    self.receptors = DictQueue(receptor_cache_maxlen)
 
     super().__init__(root, transform, pre_transform, pre_filter)
 
@@ -60,37 +64,19 @@ class LigandDataset(Dataset):
     molecule.feature_dict = defaultdict(list)
     for feature in features:
       molecule.feature_dict[feature.GetFamily()].extend(feature.GetAtomIds())
-
-  def gaussian_smearing(self, values, start, end, steps):
-    offsets = np.linspace(start, end, steps)
-    width = offsets[1] - offsets[0]
-    return np.exp(-0.5 / np.power(width, 2) * np.power(values[..., None] - offsets[None, ...], 2))
-  
-  def bessel_smearing(self, values, cutoff, num):
-    return np.sqrt(2 / cutoff) * np.sin((np.arange(num) + 1) * np.pi * values[..., None] / cutoff) / values[..., None]
-
-  def get_node_features(self, g):
-    f = lambda d: [d["is_ligand"]] +\
-      one_hot_encoding(d["symbol"], ['C', 'N', 'O', 'F', 'P', 'S', 'Cl', 'Br', 'I', 'Met', 'Unk'], with_unknown=True) +\
-      one_hot_encoding(d["hybridization"], ["S", "SP", "SP2", "SP3", "SP3D", "SP3D2"]) +\
-      one_hot_encoding(d["formal_charge"], [-2, -1, 0, 1, 2, 3, 4]) +\
-      one_hot_encoding(d["degree"], [0, 1, 2, 3, 4, 5]) +\
-      [d["is_donor"], d["is_acceptor"], d["is_neg_ionizable"], d["is_pos_ionizable"], d["is_zn_binder"],
-      d["is_aromatic"], d["is_hydrophobe"], d["is_lumped_hydrophobe"]] # (1, 11, 6, 7, 6, 8) --> total 39
-    
-    for n, d in g.nodes(data=True):
-      d["feature"] = f(d)
-
-  def get_edge_features(self, g):
-    f = lambda d: [d["is_intermolecular"], d["is_covalent"]] + one_hot_encoding(d["bond_type"], ["SINGLE", "DOUBLE", "TRIPLE", "AROMATIC"])
-
-    for m, n, d in g.edges(data=True):
-      d["feature"] = f(d)
   
   def data_maker(self, index_row):
     instance_name, ligand_name = index_row["instance_name"], index_row["ligand_name"]
+
+    # Load receptor
+    if instance_name in self.receptors:
+      receptor = self.receptors[instance_name]
+    else:
+      with open(os.path.join(self.processed_dir, instance_name, "receptor.pkl"), "rb") as f:
+        receptor = pickle.load(f)
+        self.receptors.put(instance_name, receptor)
     
-    ## Parse Ligand
+    # Parse ligand
     ligand = SimpleNamespace(rdmol=None)
     for ligand_file_type in self.ligand_file_types:
       ligand_file_path = os.path.join(self.raw_dir, instance_name, "ligands", f"{ligand_name}.{ligand_file_type}")
@@ -113,8 +99,64 @@ class LigandDataset(Dataset):
 
     ligand.rdmol = Chem.RemoveHs(ligand.rdmol)
     self.extract_features(ligand)
-
     ligand.num_rotatable_bonds = Descriptors.NumRotatableBonds(ligand.rdmol)
+    ligand.distance_matrix = distance_matrix(ligand.positions, ligand.positions).tolist()
+    ligand.graph = nx.DiGraph()
+
+    # Create ligand nodes
+    n = ligand.rdmol.GetNumAtoms()
+    for i in range(n):
+      ligand.graph.add_node(i, is_ligand=True, symbol=self.modify_symbol(ligand.symbols[i]),
+        vdw_radii=self.vdw_radii[self.modify_symbol(ligand.symbols[i], mode=1)],
+        hybridization=ligand.rdmol.GetAtomWithIdx(i).GetHybridization().name,
+        formal_charge=ligand.rdmol.GetAtomWithIdx(i).GetFormalCharge(),
+        degree=ligand.rdmol.GetAtomWithIdx(i).GetDegree(),
+        is_donor=True if i in ligand.feature_dict["Donor"] else False,
+        is_acceptor=True if i in ligand.feature_dict["Acceptor"] else False,
+        is_neg_ionizable=True if i in ligand.feature_dict["NegIonizable"] else False,
+        is_pos_ionizable=True if i in ligand.feature_dict["PosIonizable"] else False,
+        is_zn_binder=True if i in ligand.feature_dict["ZnBinder"] else False,
+        is_aromatic=True if i in ligand.feature_dict["Aromatic"] else False,
+        is_hydrophobe=True if i in ligand.feature_dict["Hydrophobe"] else False,
+        is_lumped_hydrophobe=True if i in ligand.feature_dict["LumpedHydrophobe"] else False)
+      
+    # Create ligand edges
+    for i in range(n):
+      for j in range(i + 1, n):
+        distance = ligand.distance_matrix[i][j]
+        bond = ligand.rdmol.GetBondBetweenAtoms(i, j)
+        if bond is not None:
+          ligand.graph.add_edge(i, j, is_intermolecular=False, is_covalent=True, bond_type=bond.GetBondType().name, distance=distance, interaction_type=[False, False, False])
+        elif distance < self.dist_cutoff:
+          ligand.graph.add_edge(i, j, is_intermolecular=False, is_covalent=False, bond_type="NON-COVALENT", distance=distance,
+            interaction_type=judge_noncovalent_interaction_type(ligand.graph, i, j))
+
+    pocket = SimpleNamespace()
+    pocket.pdb_lines = receptor.pocket_pdb_block.split('\n')
+    pocket.atom_idxs = []
+    ATOM, resSeq_pre, resSeq, res_atom_idxs, coordinates = False, None, None, [], None
+    for i, line in enumerate(pocket.pdb_lines):
+      if (line.startswith("ATOM") or (line.startswith("HETATM") and line[17:20] != "HOH")) and line[76:78].strip() != 'H':
+        ATOM = True
+        resSeq = int(line[22:26])
+        if resSeq != resSeq_pre:
+          if resSeq_pre:
+            min_dist = np.linalg.norm(coordinates[:, np.newaxis] - ligand.positions, axis=2).min()
+            if min_dist < self.dist_cutoff:
+              pocket.atom_idxs.extend(res_atom_idxs)
+          res_atom_idxs.append(i)
+          coordinates = np.array([[line[30:38], line[38:46], line[46:54]]], dtype=float)
+        else:
+          res_atom_idxs.append(i)
+          coordinates = np.concatenate((coordinates, np.array([[line[30:38], line[38:46], line[46:54]]], dtype=float)))
+        resSeq_pre = resSeq
+    if ATOM:
+      min_dist = np.linalg.norm(coordinates[:, np.newaxis] - ligand.positions, axis=2).min()
+      if min_dist < self.dist_cutoff:
+        pocket.atom_idxs.extend(res_atom_idxs)
+    ligand.pocket_atom_idxs = pocket.atom_idxs
+    pocket.positions = np.array([receptor.positions[i] for i in pocket.atom_idxs])
+    ligand._pocket_distance_matrix = distance_matrix(ligand.positions, pocket.positions).tolist()
 
     return ligand
 

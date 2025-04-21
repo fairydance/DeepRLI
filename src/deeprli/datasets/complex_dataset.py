@@ -60,14 +60,6 @@ class ComplexDataset(Dataset):
     for feature in features:
       molecule.feature_dict[feature.GetFamily()].extend(feature.GetAtomIds())
 
-  def gaussian_smearing(self, values, start, end, steps):
-    offsets = np.linspace(start, end, steps)
-    width = offsets[1] - offsets[0]
-    return np.exp(-0.5 / np.power(width, 2) * np.power(values[..., None] - offsets[None, ...], 2))
-  
-  def bessel_smearing(self, values, cutoff, num):
-    return np.sqrt(2 / cutoff) * np.sin((np.arange(num) + 1) * np.pi * values[..., None] / cutoff) / values[..., None]
-
   def get_node_features(self, g):
     f = lambda d: [d["is_ligand"]] +\
       one_hot_encoding(d["symbol"], ['C', 'N', 'O', 'F', 'P', 'S', 'Cl', 'Br', 'I', 'Met', 'Unk'], with_unknown=True) +\
