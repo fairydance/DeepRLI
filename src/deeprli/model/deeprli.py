@@ -5,12 +5,57 @@ import dgl
 
 from .modules import GraphTransformerEdgeLayer, MLPBlock
 
+
 def calc_reduced_dist(edges):
   return {"reduced_distance": edges.data["distance"] - edges.src["vdw_radii"] - edges.dst["vdw_radii"]}
 
 def u_v_add(edges):
   return {'x': edges.src['v'] + edges.dst['v']}
-  
+
+
+class AffinityGTN(torch.nn.Module):
+  def __init__(
+    self,
+    f_dropout_rate,
+    g_dropout_rate,
+    hidden_dim,
+    num_attention_heads,
+    use_layer_norm,
+    use_batch_norm,
+    use_residual,
+    use_envelope=True
+  ):
+    super().__init__()
+    self.__name__ = "AffinityGTN"
+    self.embedding_v = torch.nn.Linear(39, hidden_dim, bias=True)
+    self.embedding_e = torch.nn.Linear(39, hidden_dim, bias=True)
+
+    self.f_feat_dropout = torch.nn.Dropout(f_dropout_rate)
+
+    self.graph_layers = torch.nn.ModuleList([GraphTransformerEdgeLayer(hidden_dim, hidden_dim, num_attention_heads, g_dropout_rate,
+                        use_layer_norm, use_batch_norm, use_residual, use_envelope) for _ in range(10)])
+    
+    self.readout = MLPBlock(hidden_dim, 1)
+
+  def forward(self, inputs):
+    g = inputs["complex.graph"]
+    g.apply_edges(calc_reduced_dist)
+    
+    v = self.embedding_v(g.ndata["feature"])
+    v = self.f_feat_dropout(v)
+    e = self.embedding_e(g.edata["feature"])
+    for graph_layer in self.graph_layers:
+      v, e = graph_layer(g, v, e)
+
+    v = v * g.ndata["feature"][:, 0][..., None]
+    g.ndata['v'] = v
+
+    z = dgl.sum_nodes(g, 'v')
+    y = self.readout(z).squeeze(-1)
+
+    return y
+
+
 class DeepRLI(torch.nn.Module):
   def __init__(
     self,
