@@ -11,7 +11,8 @@ class ContrastiveNet(nn.Module):
     num_attention_heads,
     use_layer_norm,
     use_batch_norm,
-    use_residual
+    use_residual,
+    use_envelope=True
   ):
     super().__init__()
     self.__name__ = "ContrastiveNet"
@@ -22,7 +23,8 @@ class ContrastiveNet(nn.Module):
       num_attention_heads=num_attention_heads,
       use_layer_norm=use_layer_norm,
       use_batch_norm=use_batch_norm,
-      use_residual=use_residual
+      use_residual=use_residual,
+      use_envelope=use_envelope
     )
 
   def forward(self, inputs):

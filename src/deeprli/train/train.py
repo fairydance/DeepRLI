@@ -34,6 +34,7 @@ if __name__ == "__main__":
   parser.add_argument("--use-layer-norm", type=lambda x: bool(strtobool(x)), help="use layer normalization or not")
   parser.add_argument("--use-batch-norm", type=lambda x: bool(strtobool(x)), help="use batch normalization or not")
   parser.add_argument("--use-residual", type=lambda x: bool(strtobool(x)), help="use residual connections or not")
+  parser.add_argument("--use-envelope", type=lambda x: bool(strtobool(x)), help="use envelope constraint or not")
   parser.add_argument("--loss-fn", type=str, help="loss function (ContrastiveLoss)")
   parser.add_argument("--gpu-id", type=int, help="the id of gpu")
   parser.add_argument("--seed", type=int, help="the random seed used to initialize pseudorandom number generators")
@@ -71,6 +72,7 @@ if __name__ == "__main__":
     "use_layer_norm",
     "use_batch_norm",
     "use_residual",
+    "use_envelope",
     "loss_fn",
     "gpu_id",
     "seed",
@@ -82,6 +84,7 @@ if __name__ == "__main__":
   
   config.update({key: value for key in config_keys if (value:=getattr(args, key, None)) is not None})
   if config.get("num_workers") is None: config["num_workers"] = 32
+  if config.get("use_envelope") is None: config["use_envelope"] = True
   if config.get("loss_fn") is None: config["loss_fn"] = "ContrastiveLoss"
   if config.get("seed") is None: config["seed"] = secrets.randbelow(1_000_000_000)
   if config.get("enable_data_parallel") is None: config["enable_data_parallel"] = False
@@ -176,7 +179,8 @@ if __name__ == "__main__":
     num_attention_heads=config["num_attention_heads"],
     use_layer_norm=config["use_layer_norm"],
     use_batch_norm=config["use_batch_norm"],
-    use_residual=config["use_residual"]
+    use_residual=config["use_residual"],
+    use_envelope=config["use_envelope"]
   )
 
   logger.info("")

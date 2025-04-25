@@ -53,11 +53,12 @@ def exp(field):
 """
 
 class MultiHeadAttentionLayer(nn.Module):
-  def __init__(self, in_dim, out_dim, num_heads, use_bias):
+  def __init__(self, in_dim, out_dim, num_heads, use_bias, use_envelope):
     super().__init__()
     
     self.out_dim = out_dim
     self.num_heads = num_heads
+    self.use_envelope = use_envelope
     
     if use_bias:
       self.Q = nn.Linear(in_dim, out_dim * num_heads, bias=True)
@@ -88,7 +89,8 @@ class MultiHeadAttentionLayer(nn.Module):
 
     # Send weighted values to target nodes
     eids = g.edges()
-    g.apply_edges(fn.u_mul_e("V_v", "envelope", "V_v"))
+    if self.use_envelope:
+      g.apply_edges(fn.u_mul_e("V_v", "envelope", "V_v"))
     g.send_and_recv(eids, fn.u_mul_e("V_v", "score", "V_v"), fn.sum("V_v", "wV"))
     g.send_and_recv(eids, fn.copy_e('score', 'score'), fn.sum('score', 'z'))
   
@@ -118,7 +120,8 @@ class GraphTransformerEdgeLayer(nn.Module):
   """
     Param: 
   """
-  def __init__(self, in_dim, out_dim, num_heads, dropout=0.0, layer_norm=False, batch_norm=True, residual=True, use_bias=False):
+  def __init__(self, in_dim, out_dim, num_heads, dropout=0.0, layer_norm=False,
+               batch_norm=True, residual=True, use_bias=False, use_envelope=True):
     super().__init__()
 
     self.in_channels = in_dim
@@ -129,7 +132,7 @@ class GraphTransformerEdgeLayer(nn.Module):
     self.layer_norm = layer_norm     
     self.batch_norm = batch_norm
     
-    self.attention = MultiHeadAttentionLayer(in_dim, out_dim//num_heads, num_heads, use_bias)
+    self.attention = MultiHeadAttentionLayer(in_dim, out_dim//num_heads, num_heads, use_bias, use_envelope)
     
     self.O_v = nn.Linear(out_dim, out_dim)
     self.O_e = nn.Linear(out_dim, out_dim)

@@ -20,7 +20,8 @@ class DeepRLI(torch.nn.Module):
     num_attention_heads,
     use_layer_norm,
     use_batch_norm,
-    use_residual
+    use_residual,
+    use_envelope=True
   ):
     super().__init__()
     self.__name__ = "DeepRLI"
@@ -30,7 +31,7 @@ class DeepRLI(torch.nn.Module):
     self.f_feat_dropout = torch.nn.Dropout(f_dropout_rate)
 
     self.graph_layers = torch.nn.ModuleList([GraphTransformerEdgeLayer(hidden_dim, hidden_dim, num_attention_heads, g_dropout_rate,
-                        use_layer_norm, use_batch_norm, use_residual) for _ in range(10)])
+                        use_layer_norm, use_batch_norm, use_residual, use_envelope) for _ in range(10)])
     
     self.readout1 = MLPBlock(hidden_dim, 1)
     self.readout2 = MLPBlock(hidden_dim, 4)
@@ -105,7 +106,8 @@ class DeepRLIForInterpretation(torch.nn.Module):
     num_attention_heads,
     use_layer_norm,
     use_batch_norm,
-    use_residual
+    use_residual,
+    use_envelope=True
   ):
     super().__init__()
     self.__name__ = "DeepRLIForInterpretation"
@@ -115,7 +117,7 @@ class DeepRLIForInterpretation(torch.nn.Module):
     self.f_feat_dropout = torch.nn.Dropout(f_dropout_rate)
 
     self.graph_layers = torch.nn.ModuleList([GraphTransformerEdgeLayer(hidden_dim, hidden_dim, num_attention_heads, g_dropout_rate,
-                        use_layer_norm, use_batch_norm, use_residual) for _ in range(10)])
+                        use_layer_norm, use_batch_norm, use_residual, use_envelope) for _ in range(10)])
     
     self.readout1 = MLPBlock(hidden_dim, 1)
     self.readout2 = MLPBlock(hidden_dim, 4)
