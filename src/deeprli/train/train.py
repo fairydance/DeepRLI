@@ -8,6 +8,7 @@ from deeprli.model import ContrastiveNet
 from deeprli.nn import ContrastiveLoss
 from deeprli.train import Trainer
 from deeprli.train.hooks import BaseHook, LoggingHook, ReduceLROnPlateauHook
+from deeprli.utils import set_deterministic
 
 
 if __name__ == "__main__":
@@ -124,11 +125,7 @@ if __name__ == "__main__":
   logger.info(f"Random Seed")
   logger.info("=" * 80)
   logger.info(f"Value: {config['seed']}")
-  random.seed(config["seed"])
-  np.random.seed(config["seed"])
-  torch.manual_seed(config["seed"])
-  if device.type == "cuda":
-    torch.cuda.manual_seed(config["seed"])
+  set_deterministic(config["seed"])
 
   # load data
   train_validation_data = ContrastiveDatasetForTrain(root=config["train_data_root"], data_index=config["train_data_index"], data_files=config["train_data_files"].split(','))
