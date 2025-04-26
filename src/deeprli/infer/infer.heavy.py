@@ -27,6 +27,7 @@ if __name__ == "__main__":
   parser.add_argument("--use-batch-norm", type=lambda x: bool(strtobool(x)), help="use batch normalization or not")
   parser.add_argument("--use-residual", type=lambda x: bool(strtobool(x)), help="use residual connections or not")
   parser.add_argument("--use-envelope", type=lambda x: bool(strtobool(x)), help="use envelope constraint or not")
+  parser.add_argument("--use-multi-obj", type=lambda x: bool(strtobool(x)), help="use multi-objective or not")
   args = parser.parse_args()
 
   if args.config and os.path.isfile(args.config):
@@ -54,6 +55,7 @@ if __name__ == "__main__":
     "use_batch_norm",
     "use_residual",
     "use_envelope",
+    "use_multi_obj",
   ]
 
   config.update({key: value for key in config_keys if (value:=getattr(args, key, None)) is not None})
@@ -72,6 +74,7 @@ if __name__ == "__main__":
   if config.get("use_batch_norm") is None: config["use_batch_norm"] = True
   if config.get("use_residual") is None: config["use_residual"] = True
   if config.get("use_envelope") is None: config["use_envelope"] = True
+  if config.get("use_multi_obj") is None: config["use_multi_obj"] = True
 
   pathlib.Path(config["save_path"]).mkdir(parents=True, exist_ok=True)
 
@@ -123,7 +126,8 @@ if __name__ == "__main__":
         use_layer_norm=config["use_layer_norm"],
         use_batch_norm=config["use_batch_norm"],
         use_residual=config["use_residual"],
-        use_envelope=config["use_envelope"]
+        use_envelope=config["use_envelope"],
+        use_multi_obj=config["use_multi_obj"]
       )
       model.to(device)
       model.load_state_dict(torch.load(config["model"], map_location=device))
@@ -148,7 +152,8 @@ if __name__ == "__main__":
         use_layer_norm=config["use_layer_norm"],
         use_batch_norm=config["use_batch_norm"],
         use_residual=config["use_residual"],
-        use_envelope=config["use_envelope"]
+        use_envelope=config["use_envelope"],
+        use_multi_obj=config["use_multi_obj"]
       )
       model.to(device)
       model.load_state_dict(torch.load(config["model"], map_location=device))

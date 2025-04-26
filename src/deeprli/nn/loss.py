@@ -1,7 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-  
+
+
+class MSELoss(nn.Module):
+  def __init__(self):
+    super().__init__()
+
+  def forward(self, result, affinity):
+    return torch.mean((result - affinity)**2)
+
 
 class ContrastiveLoss(nn.Module):
   def __init__(self):

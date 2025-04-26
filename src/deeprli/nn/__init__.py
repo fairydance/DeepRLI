@@ -1,1 +1,1 @@
-from .loss import ContrastiveLoss
+from .loss import MSELoss, ContrastiveLoss

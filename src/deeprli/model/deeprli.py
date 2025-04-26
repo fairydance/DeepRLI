@@ -115,10 +115,12 @@ class DeepRLIForInterpretation(torch.nn.Module):
     use_layer_norm,
     use_batch_norm,
     use_residual,
-    use_envelope=True
+    use_envelope=True,
+    use_multi_obj=True
   ):
     super().__init__()
     self.__name__ = "DeepRLIForInterpretation"
+    self.use_multi_obj = use_multi_obj
     self.embedding_v = torch.nn.Linear(39, hidden_dim, bias=True)
     self.embedding_e = torch.nn.Linear(39, hidden_dim, bias=True)
 

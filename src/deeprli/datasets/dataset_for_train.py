@@ -16,6 +16,43 @@ def e_init(c, n):
   return func
 
 
+class AffinityDatasetForTrain(Dataset):
+  def __init__(self, root=None, data_index="index/data.csv", data_files=["processed/data.pkl"]):
+    self.root = root
+    self.data_index_df = pd.read_csv(os.path.join(root, data_index))
+
+    self.data = {}
+    for data_file in data_files:
+      with open(os.path.join(self.root, data_file), "rb") as f:
+        self.data.update(pickle.load(f))
+
+  @property
+  def processed_dir(self):
+    return os.path.join(self.root, "processed")
+  
+  def __getitem__(self, idx):
+    index_row = self.data_index_df.iloc[idx]
+    data = copy.deepcopy(self.data[index_row["complex_path"]])
+    data["complex.graph"] = dgl.add_reverse_edges(data["complex.graph"], copy_edata=True)
+    data["DeltaG"] = index_row["DeltaG"].tolist()
+    return data
+  
+  @staticmethod
+  def collate_fn(items):
+    def make_batch_data(data_list):
+      keys = ["complex.graph", "ligand.num_rotatable_bonds", "DeltaG"]
+      batch_data = {key: [data[key] for data in data_list] for key in keys}
+      batch_data["complex.graph"] = dgl.batch(batch_data["complex.graph"])
+      batch_data["complex.graph"].ndata["feature"] = batch_data["complex.graph"].ndata["feature"].float()
+      batch_data["complex.graph"].edata["feature"] = batch_data["complex.graph"].edata["feature"].float()
+      batch_data["complex.graph"].apply_edges(e_init(6.5, 33))
+      batch_data["ligand.num_rotatable_bonds"] = torch.Tensor(batch_data["ligand.num_rotatable_bonds"])
+      batch_data["DeltaG"] = torch.Tensor(batch_data["DeltaG"])
+      return batch_data
+    
+    return make_batch_data(items)
+  
+
 class ContrastiveDatasetForTrain(Dataset):
   def __init__(self, root=None, data_index="index/data.csv", data_files=["processed/data.pkl"]):
     self.root = root

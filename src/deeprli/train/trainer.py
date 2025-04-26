@@ -144,13 +144,17 @@ class Trainer:
 
         train_batch = [{k: v.to(self.device) for k, v in entry.items()} for entry in train_batch]
         train_result = self.model(train_batch)
-        train_loss = self.loss_fn(train_result, [train_batch[0]["DeltaG"], train_batch[-1]["DeltaG"]])
+        if self.model.__name__ == "DeepRLI" and not self.model.use_multi_obj:
+          train_loss = self.loss_fn(train_result, train_batch["DeltaG"])
+          for hook in self.hooks:
+            hook.on_train_batch_end(self, train_loss.tolist(), train_batch["DeltaG"].shape[0])
+        elif self.model.__name__ == "ContrastiveNet" and self.model.use_multi_obj:
+          train_loss = self.loss_fn(train_result, [train_batch[0]["DeltaG"], train_batch[-1]["DeltaG"]])
+          for hook in self.hooks:
+            hook.on_train_batch_end(self, train_loss.tolist(), train_batch[0]["DeltaG"].shape[0])
+        self.optimizer.zero_grad()
         train_loss.backward()
         self.optimizer.step()
-        self.optimizer.zero_grad()
-
-        for hook in self.hooks:
-          hook.on_train_batch_end(self, train_loss.tolist(), train_batch[0]["DeltaG"].shape[0])
 
       for hook in self.hooks:
         hook.on_train_end(self)
@@ -166,10 +170,14 @@ class Trainer:
 
         validation_batch = [{k: v.to(self.device) for k, v in entry.items()} for entry in validation_batch]
         validation_result = self.model(validation_batch)
-        validation_loss = self.loss_fn(validation_result, [validation_batch[0]["DeltaG"], validation_batch[-1]["DeltaG"]])
-
-        for hook in self.hooks:
-          hook.on_validation_batch_end(self, validation_loss.tolist(), validation_batch[0]["DeltaG"].shape[0])
+        if self.model.__name__ == "DeepRLI" and not self.model.use_multi_obj:
+          validation_loss = self.loss_fn(validation_result, validation_batch["DeltaG"])
+          for hook in self.hooks:
+            hook.on_validation_batch_end(self, validation_loss.tolist(), validation_batch["DeltaG"].shape[0])
+        elif self.model.__name__ == "ContrastiveNet" and self.model.use_multi_obj:
+          validation_loss = self.loss_fn(validation_result, [validation_batch[0]["DeltaG"], validation_batch[-1]["DeltaG"]])
+          for hook in self.hooks:
+            hook.on_validation_batch_end(self, validation_loss.tolist(), validation_batch[0]["DeltaG"].shape[0])
 
       for hook in self.hooks:
         hook.on_validation_end(self)
@@ -194,10 +202,14 @@ class Trainer:
 
           test_batch = [{k: v.to(self.device) for k, v in entry.items()} for entry in test_batch]
           test_result = self.model(test_batch)
-          test_loss = self.loss_fn(test_result, [test_batch[0]["DeltaG"], test_batch[-1]["DeltaG"]])
-
-          for hook in self.hooks:
-            hook.on_test_batch_end(self, test_loss.tolist(), test_batch[0]["DeltaG"].shape[0])
+          if self.model.__name__ == "DeepRLI" and not self.model.use_multi_obj:
+            test_loss = self.loss_fn(test_result, test_batch["DeltaG"])
+            for hook in self.hooks:
+              hook.on_test_batch_end(self, test_loss.tolist(), test_batch["DeltaG"].shape[0])
+          elif self.model.__name__ == "ContrastiveNet" and self.model.use_multi_obj:
+            test_loss = self.loss_fn(test_result, [test_batch[0]["DeltaG"], test_batch[-1]["DeltaG"]])
+            for hook in self.hooks:
+              hook.on_test_batch_end(self, test_loss.tolist(), test_batch[0]["DeltaG"].shape[0])
 
         for hook in self.hooks:
           hook.on_test_end(self)

@@ -3,17 +3,18 @@ from distutils.util import strtobool
 import numpy as np
 import torch
 
-from deeprli.datasets import ContrastiveDatasetForTrain
-from deeprli.model import ContrastiveNet
-from deeprli.nn import ContrastiveLoss
+from deeprli.datasets import AffinityDatasetForTrain, ContrastiveDatasetForTrain
+from deeprli.model import DeepRLI, ContrastiveNet
+from deeprli.nn import MSELoss, ContrastiveLoss
 from deeprli.train import Trainer
 from deeprli.train.hooks import BaseHook, LoggingHook, ReduceLROnPlateauHook
 from deeprli.utils import set_deterministic
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser(description="Train ContrastiveNet")
+  parser = argparse.ArgumentParser(description="Train DeepRLI Model")
   parser.add_argument('--config', type=str, help="the path of a configuration file")
+  parser.add_argument("--model-name", type=str, help="the name of the model to be trained (DeepRLI or ContrastiveNet)")
   parser.add_argument("--train-data-root", type=str, help="the root path of training data")
   parser.add_argument("--train-data-index", type=str, help="the index file of training data (relative to the root)")
   parser.add_argument("--train-data-files", type=str, help="the path of training data files (relative to the root)")
@@ -36,7 +37,8 @@ if __name__ == "__main__":
   parser.add_argument("--use-batch-norm", type=lambda x: bool(strtobool(x)), help="use batch normalization or not")
   parser.add_argument("--use-residual", type=lambda x: bool(strtobool(x)), help="use residual connections or not")
   parser.add_argument("--use-envelope", type=lambda x: bool(strtobool(x)), help="use envelope constraint or not")
-  parser.add_argument("--loss-fn", type=str, help="loss function (ContrastiveLoss)")
+  parser.add_argument("--use-multi-obj", type=lambda x: bool(strtobool(x)), help="use multi-objective or not")
+  parser.add_argument("--loss-fn", type=str, help="loss function (MSELoss or ContrastiveLoss)")
   parser.add_argument("--gpu-id", type=int, help="the id of gpu")
   parser.add_argument("--seed", type=int, help="the random seed used to initialize pseudorandom number generators")
   parser.add_argument("--enable-data-parallel", type=lambda x: bool(strtobool(x)), help="enable data parallel or not")
@@ -52,6 +54,7 @@ if __name__ == "__main__":
     config = {}
 
   config_keys = [
+    "model_name",
     "train_data_root",
     "train_data_index",
     "train_data_files",
@@ -74,6 +77,7 @@ if __name__ == "__main__":
     "use_batch_norm",
     "use_residual",
     "use_envelope",
+    "use_multi_obj",
     "loss_fn",
     "gpu_id",
     "seed",
@@ -84,8 +88,10 @@ if __name__ == "__main__":
   ]
   
   config.update({key: value for key in config_keys if (value:=getattr(args, key, None)) is not None})
+  if config.get("model_name") is None: config["model_name"] = "ContrastiveNet"
   if config.get("num_workers") is None: config["num_workers"] = 32
   if config.get("use_envelope") is None: config["use_envelope"] = True
+  if config.get("use_multi_obj") is None: config["use_multi_obj"] = True
   if config.get("loss_fn") is None: config["loss_fn"] = "ContrastiveLoss"
   if config.get("seed") is None: config["seed"] = secrets.randbelow(1_000_000_000)
   if config.get("enable_data_parallel") is None: config["enable_data_parallel"] = False
@@ -128,9 +134,14 @@ if __name__ == "__main__":
   set_deterministic(config["seed"])
 
   # load data
-  train_validation_data = ContrastiveDatasetForTrain(root=config["train_data_root"], data_index=config["train_data_index"], data_files=config["train_data_files"].split(','))
-  if config.get("test_data_root") is not None:
-    test_data = ContrastiveDatasetForTrain(root=config["test_data_root"], data_index=config["test_data_index"], data_files=config["test_data_files"].split(','))
+  if config["model_name"] == "DeepRLI" and not config["use_multi_obj"]:
+    train_validation_data = AffinityDatasetForTrain(root=config["train_data_root"], data_index=config["train_data_index"], data_files=config["train_data_files"].split(','))
+    if config.get("test_data_root") is not None:
+      test_data = AffinityDatasetForTrain(root=config["test_data_root"], data_index=config["test_data_index"], data_files=config["test_data_files"].split(','))
+  elif config["model_name"] == "ContrastiveNet":
+    train_validation_data = ContrastiveDatasetForTrain(root=config["train_data_root"], data_index=config["train_data_index"], data_files=config["train_data_files"].split(','))
+    if config.get("test_data_root") is not None:
+      test_data = ContrastiveDatasetForTrain(root=config["test_data_root"], data_index=config["test_data_index"], data_files=config["test_data_files"].split(','))
 
   data_split_scheme_file = os.path.join(config["save_path"], "data_split_scheme.pkl")
 
@@ -157,28 +168,50 @@ if __name__ == "__main__":
   logger.info(f"Dataset for train and validation: {train_validation_data}")
   logger.info("Data splitting ...")
 
-  train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, shuffle=True, num_workers=config["num_workers"])
-  validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, num_workers=config["num_workers"])
-  if config.get("test_data_root") is not None:
-    test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, num_workers=config["num_workers"])
-  else:
-    test_data_loader = None
+  if config["model_name"] == "DeepRLI" and not config["use_multi_obj"]:
+    train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=config["batch"], collate_fn=AffinityDatasetForTrain.collate_fn, shuffle=True, num_workers=config["num_workers"])
+    validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=config["batch"], collate_fn=AffinityDatasetForTrain.collate_fn, num_workers=config["num_workers"])
+    if config.get("test_data_root") is not None:
+      test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=config["batch"], collate_fn=AffinityDatasetForTrain.collate_fn, num_workers=config["num_workers"])
+    else:
+      test_data_loader = None
+  elif config["model_name"] == "ContrastiveNet":
+    train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, shuffle=True, num_workers=config["num_workers"])
+    validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, num_workers=config["num_workers"])
+    if config.get("test_data_root") is not None:
+      test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=config["batch"], collate_fn=ContrastiveDatasetForTrain.collate_fn, num_workers=config["num_workers"])
+    else:
+      test_data_loader = None
 
   logger.info(f"> Train Size: {len(train_data)}, Valid Size: {len(validation_data)}")
   if config.get("test_data_root") is not None:
     logger.info(f"> Test Size: {len(test_data)}")
 
   # build model
-  model = ContrastiveNet(
-    f_dropout_rate=config["f_dropout_rate"],
-    g_dropout_rate=config["g_dropout_rate"],
-    hidden_dim=config["hidden_dim"],
-    num_attention_heads=config["num_attention_heads"],
-    use_layer_norm=config["use_layer_norm"],
-    use_batch_norm=config["use_batch_norm"],
-    use_residual=config["use_residual"],
-    use_envelope=config["use_envelope"]
-  )
+  if config["model_name"] == "DeepRLI":
+    model = DeepRLI(
+      f_dropout_rate=config["f_dropout_rate"],
+      g_dropout_rate=config["g_dropout_rate"],
+      hidden_dim=config["hidden_dim"],
+      num_attention_heads=config["num_attention_heads"],
+      use_layer_norm=config["use_layer_norm"],
+      use_batch_norm=config["use_batch_norm"],
+      use_residual=config["use_residual"],
+      use_envelope=config["use_envelope"],
+      use_multi_obj=config["use_multi_obj"]
+    )
+  elif config["model_name"] == "ContrastiveNet":
+    model = ContrastiveNet(
+      f_dropout_rate=config["f_dropout_rate"],
+      g_dropout_rate=config["g_dropout_rate"],
+      hidden_dim=config["hidden_dim"],
+      num_attention_heads=config["num_attention_heads"],
+      use_layer_norm=config["use_layer_norm"],
+      use_batch_norm=config["use_batch_norm"],
+      use_residual=config["use_residual"],
+      use_envelope=config["use_envelope"],
+      use_multi_obj=config["use_multi_obj"]
+    )
 
   logger.info("")
   logger.info(f"Model: {model.__name__}")
@@ -201,7 +234,10 @@ if __name__ == "__main__":
   logger.info("=" * 80)
   logger.info(f'Loss function: {config["loss_fn"]}')
 
-  loss_fn = ContrastiveLoss()
+  if config["loss_fn"] == "MSELoss":
+    loss_fn = MSELoss()
+  elif config["loss_fn"] == "ContrastiveLoss":
+    loss_fn = ContrastiveLoss()
   
   optimizer = torch.optim.Adam(model.parameters(), lr=config["initial_lr"], weight_decay=config["weight_decay"])
   logger.info(f"Optimizer: {type(optimizer).__name__}")
