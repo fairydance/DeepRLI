@@ -1,4 +1,4 @@
-import os, pickle, logging, pathlib
+import os, pickle, logging, pathlib, time
 from collections import defaultdict
 import numpy as np
 import pandas as pd
@@ -243,7 +243,7 @@ class ComplexDataset(Dataset):
 
   def process(self):
     data_index_processed = []
-    
+    start = time.perf_counter()
     for i, index_row in self.data_index_df.iterrows():
       complex_path = index_row["complex_path"]
       complex_dir, complex_name = complex_path.rsplit('/', 1) if '/' in complex_path else ('', complex_path)
@@ -265,7 +265,13 @@ class ComplexDataset(Dataset):
       data_index_processed.append(list(index_row))
 
       logger.info(f"[{index_row['complex_path']}] Success, Graph(num_nodes={data['complex.graph'].num_nodes()}, num_edges={data['complex.graph'].num_edges()})")
-    
+    end = time.perf_counter()
+    duration = end - start
+    num_item_processed = len(data_index_processed)
+    avg_per_item = duration / num_item_processed
+
+    logger.info(f"Data processing complete. Time of duration: {duration:.6f} seconds for {num_item_processed} item(s). Average per item: {avg_per_item:.6f} seconds/item")
+
     data_index_processed_df = pd.DataFrame(data_index_processed, columns=self.data_index_df.columns)
     data_index_name, data_index_ext = os.path.splitext(self.data_index)
     data_index_processed_df.to_csv(os.path.join(self.root, data_index_name + ".processed" + data_index_ext), float_format="%.8f", index=False)
