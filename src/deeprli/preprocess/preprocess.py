@@ -9,6 +9,7 @@ if __name__ == "__main__":
   parser.add_argument("--ligand-file-types", type=str, default="sdf,mol2,mol2.obabel.sdf,mol2.obabel.pdb", help="ligand file types separated by commas")
   parser.add_argument("--dist-cutoff", type=float, default=6.5, help="distance cutoff for residues around the ligand")
   parser.add_argument("--save-details", action="store_true", help="save details of ligand and receptor or not")
+  parser.add_argument("--save-single", action="store_true", help="save every single processed data")
   args = parser.parse_args()
 
   logging.root.handlers = []
@@ -33,7 +34,8 @@ if __name__ == "__main__":
     data_index=args.data_index,
     ligand_file_types=args.ligand_file_types.split(','),
     dist_cutoff=args.dist_cutoff,
-    save_details=args.save_details
+    save_details=args.save_details,
+    save_single=args.save_single
   )
 
   logger.info("Preprocess complete. Congratulations!")

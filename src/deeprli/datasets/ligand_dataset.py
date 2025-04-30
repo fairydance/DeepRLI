@@ -84,11 +84,11 @@ class LigandDataset(Dataset):
         logger.info(f"[{instance_name}] Ligand File Not Found (.{ligand_file_type}): {ligand_file_path}")
       else:
         if ligand_file_type.split('.')[-1] == "sdf":
-          ligand = Attributes({"rdmol": Chem.SDMolSupplier(ligand_file_path)[0]})
+          ligand.rdmol = Chem.SDMolSupplier(ligand_file_path)[0]
         elif ligand_file_type.split('.')[-1] == "mol2":
-          ligand = Attributes({"rdmol": Chem.MolFromMol2File(ligand_file_path)})
+          ligand.rdmol = Chem.MolFromMol2File(ligand_file_path)
         elif ligand_file_type.split('.')[-1] == "pdb":
-          ligand = Attributes({"rdmol": Chem.MolFromPDBFile(ligand_file_path)})
+          ligand.rdmol = Chem.MolFromPDBFile(ligand_file_path)
         if ligand.rdmol is None:
           logger.info(f"[{instance_name}] Ligand Molecule Parsing Failed (.{ligand_file_type}): {ligand_file_path}")
         else:

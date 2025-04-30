@@ -1,4 +1,5 @@
 import os, pickle, logging, pathlib, time
+from types import SimpleNamespace
 from collections import defaultdict
 import numpy as np
 import pandas as pd
@@ -7,21 +8,22 @@ from rdkit import Chem, RDConfig
 from rdkit.Chem import ChemicalFeatures, Descriptors
 import networkx as nx
 import dgl
-import torch
 
 from deeprli.data import Dataset
-from deeprli.base import Attributes, ChemicalElements
+from deeprli.base import ChemicalElements
 from deeprli.utils import one_hot_encoding, judge_noncovalent_interaction_type
 
 logger = logging.getLogger(__name__)
 
 class ComplexDataset(Dataset):
   def __init__(self, root=None, transform=None, pre_transform=None, pre_filter=None,
-               data_index="index/data.csv", ligand_file_types=["sdf", "mol2", "pdb"], dist_cutoff=6.5, save_details=False):
+               data_index="index/data.csv", ligand_file_types=["sdf", "mol2", "pdb"], dist_cutoff=6.5,
+               save_details=False, save_single=False):
     self.data_index = data_index
     self.ligand_file_types = ligand_file_types
     self.dist_cutoff = dist_cutoff
     self.save_details = save_details
+    self.save_single = save_single
 
     self.data_index_df = pd.read_csv(os.path.join(root, data_index))
     self.vdw_radii = {'C': 2.0, 'N': 1.7, 'O': 1.6, 'F': 1.5, 'Si': 2.2, 'P': 2.1, 'S': 2.0, 'Cl': 1.8, 'Br': 2.0,
@@ -32,6 +34,10 @@ class ComplexDataset(Dataset):
     self.ptable = Chem.GetPeriodicTable()
 
     super().__init__(root, transform, pre_transform, pre_filter)
+
+  @property
+  def compiled_dir(self):
+    return os.path.join(self.root, "compiled")
 
   @property
   def raw_file_names(self):
@@ -80,18 +86,18 @@ class ComplexDataset(Dataset):
   
   def data_maker(self, complex_path):
     ## Parse Ligand
-    ligand = Attributes({"rdmol": None})
+    ligand = SimpleNamespace(rdmol=None)
     for ligand_file_type in self.ligand_file_types:
       ligand_file_path = os.path.join(self.raw_dir, complex_path, f"ligand.{ligand_file_type}")
       if not os.path.exists(ligand_file_path):
         logger.info(f"[{complex_path}] Ligand File Not Found (.{ligand_file_type}): {ligand_file_path}")
       else:
         if ligand_file_type.split('.')[-1] == "sdf":
-          ligand = Attributes({"rdmol": Chem.SDMolSupplier(ligand_file_path)[0]})
+          ligand.rdmol = Chem.SDMolSupplier(ligand_file_path)[0]
         elif ligand_file_type.split('.')[-1] == "mol2":
-          ligand = Attributes({"rdmol": Chem.MolFromMol2File(ligand_file_path)})
+          ligand.rdmol = Chem.MolFromMol2File(ligand_file_path)
         elif ligand_file_type.split('.')[-1] == "pdb":
-          ligand = Attributes({"rdmol": Chem.MolFromPDBFile(ligand_file_path)})
+          ligand.rdmol = Chem.MolFromPDBFile(ligand_file_path)
         if ligand.rdmol is None:
           logger.info(f"[{complex_path}] Ligand Molecule Parsing Failed (.{ligand_file_type}): {ligand_file_path}")
         else:
@@ -142,7 +148,7 @@ class ComplexDataset(Dataset):
       # with open(pocket_file_path, "wt") as f:
       #   f.write(pocket_pdb_block)
 
-    receptor = Attributes({"rdmol": Chem.MolFromPDBBlock(pocket_pdb_block)})
+    receptor = SimpleNamespace(rdmol=Chem.MolFromPDBBlock(pocket_pdb_block))
 
     if receptor.rdmol is None:
       logger.info(f"[{complex_path}] Receptor Molecule Parsing Failed (.pdb): {receptor_file_path}")
@@ -223,7 +229,7 @@ class ComplexDataset(Dataset):
           g.add_edge(i, j + n1, is_intermolecular=True, is_covalent=False, bond_type="NON-COVALENT", distance=distance,
             interaction_type=judge_noncovalent_interaction_type(g, i, j + n1))
 
-    complex = Attributes()
+    complex = SimpleNamespace()
     self.get_node_features(g)
     self.get_edge_features(g)
     complex.graph = dgl.from_networkx(g, node_attrs=["feature", "vdw_radii"], edge_attrs=["feature", "distance", "interaction_type"])
@@ -242,6 +248,7 @@ class ComplexDataset(Dataset):
     return data
 
   def process(self):
+    all_processed_data = {}
     data_index_processed = []
     start = time.perf_counter()
     for i, index_row in self.data_index_df.iterrows():
@@ -258,10 +265,12 @@ class ComplexDataset(Dataset):
       if self.pre_transform is not None:
         data = self.pre_transform(data)
 
-      pathlib.Path(os.path.join(self.processed_dir, complex_dir)).mkdir(parents=True, exist_ok=True)
-      with open(os.path.join(self.processed_dir, f"{complex_path}.pkl"), "wb") as f:
-        pickle.dump(data, f)
+      if self.save_single:
+        pathlib.Path(os.path.join(self.processed_dir, complex_dir)).mkdir(parents=True, exist_ok=True)
+        with open(os.path.join(self.processed_dir, f"{complex_path}.pkl"), "wb") as f:
+          pickle.dump(data, f)
 
+      all_processed_data[complex_path] = data
       data_index_processed.append(list(index_row))
 
       logger.info(f"[{index_row['complex_path']}] Success, Graph(num_nodes={data['complex.graph'].num_nodes()}, num_edges={data['complex.graph'].num_edges()})")
@@ -272,25 +281,10 @@ class ComplexDataset(Dataset):
 
     logger.info(f"Data processing complete. Time of duration: {duration:.6f} seconds for {num_item_processed} item(s). Average per item: {avg_per_item:.6f} seconds/item")
 
+    pathlib.Path(self.compiled_dir).mkdir(parents=True, exist_ok=True)
+    with open(os.path.join(self.compiled_dir, f"{os.path.splitext(os.path.basename(self.data_index))[0]}.processed.pkl"), "wb") as f:
+      pickle.dump(all_processed_data, f)
+
     data_index_processed_df = pd.DataFrame(data_index_processed, columns=self.data_index_df.columns)
     data_index_name, data_index_ext = os.path.splitext(self.data_index)
     data_index_processed_df.to_csv(os.path.join(self.root, data_index_name + ".processed" + data_index_ext), float_format="%.8f", index=False)
-
-  def len(self):
-    return len(self.data_index_df)
-
-  def get(self, idx):
-    complex_path = self.data_index_df["complex_path"][idx]
-    with open(os.path.join(self.processed_dir, f"{complex_path}.pkl"), "rb") as f:
-      data = pickle.load(f)
-    return data
-
-  @staticmethod
-  def collate_fn(items):
-    keys = ["complex.graph", "ligand.num_rotatable_bonds"]
-    data = {key: [item[key] for item in items] for key in keys}
-    data["complex.graph"] = dgl.batch(data["complex.graph"])
-    data["complex.graph"].ndata["feature"] = data["complex.graph"].ndata["feature"].float()
-    data["complex.graph"].edata["feature"] = data["complex.graph"].edata["feature"].float()
-    data["ligand.num_rotatable_bonds"] = torch.Tensor(data["ligand.num_rotatable_bonds"])
-    return data
