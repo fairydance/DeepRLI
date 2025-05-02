@@ -276,10 +276,9 @@ class ComplexDataset(Dataset):
       logger.info(f"[{index_row['complex_path']}] Success, Graph(num_nodes={data['complex.graph'].num_nodes()}, num_edges={data['complex.graph'].num_edges()})")
     end = time.perf_counter()
     duration = end - start
-    num_item_processed = len(data_index_processed)
-    avg_per_item = duration / num_item_processed
+    avg_per_item = duration / len(self.data_index_df)
 
-    logger.info(f"Data processing complete. Time of duration: {duration:.6f} seconds for {num_item_processed} item(s). Average per item: {avg_per_item:.6f} seconds/item")
+    logger.info(f"Data processing complete. Time of duration: {duration:.6f} seconds for {len(self.data_index_df)} item(s). Average per item: {avg_per_item:.6f} seconds/item")
 
     pathlib.Path(self.compiled_dir).mkdir(parents=True, exist_ok=True)
     with open(os.path.join(self.compiled_dir, f"{os.path.splitext(os.path.basename(self.data_index))[0]}.processed.pkl"), "wb") as f:

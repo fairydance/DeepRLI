@@ -20,6 +20,8 @@ if __name__ == "__main__":
   parser.add_argument("--use-layer-norm", type=lambda x: bool(strtobool(x)), help="use layer normalization or not")
   parser.add_argument("--use-batch-norm", type=lambda x: bool(strtobool(x)), help="use batch normalization or not")
   parser.add_argument("--use-residual", type=lambda x: bool(strtobool(x)), help="use residual connections or not")
+  parser.add_argument("--use-envelope", type=lambda x: bool(strtobool(x)), help="use envelope constraint or not")
+  parser.add_argument("--use-multi-obj", type=lambda x: bool(strtobool(x)), help="use multi-objective or not")
   args = parser.parse_args()
 
   if args.config is not None and os.path.isfile(args.config):
@@ -40,10 +42,14 @@ if __name__ == "__main__":
     "use_layer_norm",
     "use_batch_norm",
     "use_residual",
+    "use_envelope",
+    "use_multi_obj",
   ]
 
   config.update({key: value for key in config_keys if (value:=getattr(args, key, None)) is not None})
   if config.get("remove_prefix") is None: config["remove_prefix"] = False
+  if config.get("use_envelope") is None: config["use_envelope"] = True
+  if config.get("use_multi_obj") is None: config["use_multi_obj"] = True
   print(config)
 
   device = torch.device("cpu")
@@ -66,7 +72,9 @@ if __name__ == "__main__":
         num_attention_heads=config["num_attention_heads"],
         use_layer_norm=config["use_layer_norm"],
         use_batch_norm=config["use_batch_norm"],
-        use_residual=config["use_residual"]
+        use_residual=config["use_residual"],
+        use_envelope=config["use_envelope"],
+        use_multi_obj=config["use_multi_obj"]
       )
       model.load_state_dict(state_snapshot["model"])
       torch.save(model, config["save_path"])
