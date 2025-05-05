@@ -172,9 +172,9 @@ if __name__ == "__main__":
     end = time.perf_counter()
 
   duration = end - start
-  avg_per_item = duration / len(data_loader)
+  avg_per_item = duration / len(data)
 
-  logger.info(f"Infering complete. Time of duration: {duration:.6f} seconds for {len(data_loader)} item(s). Average per item: {avg_per_item:.6f} seconds/item")
+  logger.info(f"Infering complete. Time of duration: {duration:.6f} seconds for {len(data)} item(s). Average per item: {avg_per_item:.6f} seconds/item")
 
   inference_results = pd.read_csv(os.path.join(config["data_root"], config["data_index"]))
   inference_results["scoring_score"] = p[0]
