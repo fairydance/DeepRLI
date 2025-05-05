@@ -34,8 +34,18 @@ class DeepRLI(torch.nn.Module):
 
     self.f_feat_dropout = torch.nn.Dropout(f_dropout_rate)
 
-    self.graph_layers = torch.nn.ModuleList([GraphTransformerEdgeLayer(hidden_dim, hidden_dim, num_attention_heads, g_dropout_rate,
-                        use_layer_norm, use_batch_norm, use_residual, use_envelope) for _ in range(10)])
+    self.graph_layers = torch.nn.ModuleList([
+      GraphTransformerEdgeLayer(
+        in_dim=hidden_dim,
+        out_dim=hidden_dim,
+        num_heads=num_attention_heads,
+        dropout=g_dropout_rate,
+        layer_norm=use_layer_norm,
+        batch_norm=use_batch_norm,
+        residual=use_residual,
+        use_envelope=use_envelope
+      ) for _ in range(10)
+    ])
     
     self.readout1 = MLPBlock(hidden_dim, 1)
     if self.use_multi_obj:

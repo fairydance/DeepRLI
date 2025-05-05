@@ -134,11 +134,13 @@ if __name__ == "__main__":
 
     model.eval()
     p = [[], [], []]
+    start = time.perf_counter()
     for batch in data_loader:
       batch = {k: v.to(device) for k, v in batch.items()}
       result = model(batch)
       for i in range(3):
         p[i].extend(result[i].tolist())
+    end = time.perf_counter()
   else:
     pathlib.Path(os.path.join(config["save_path"], "results")).mkdir(parents=True, exist_ok=True)
     if config["model_format"] == "model_object":
@@ -160,12 +162,19 @@ if __name__ == "__main__":
 
     model.eval()
     p = [[], [], []]
+    start = time.perf_counter()
     for j, batch in enumerate(data_loader):
       batch = {k: v.to(device) for k, v in batch.items()}
       result = model(batch)
       torch.save(result, os.path.join(config["save_path"], "results", f"result_{j}.pth"))
       for i in range(3):
         p[i].extend(result["scores"][i].tolist())
+    end = time.perf_counter()
+
+  duration = end - start
+  avg_per_item = duration / len(data_loader)
+
+  logger.info(f"Infering complete. Time of duration: {duration:.6f} seconds for {len(data_loader)} item(s). Average per item: {avg_per_item:.6f} seconds/item")
 
   inference_results = pd.read_csv(os.path.join(config["data_root"], config["data_index"]))
   inference_results["scoring_score"] = p[0]
