@@ -20,9 +20,9 @@ if __name__ == "__main__":
 
   predicted_data_index = pd.read_csv(args.predicted_data_index)
   if not args.is_ensemble:
-    p = predicted_data_index[args.prediction_target].to_numpy()
+    p = predicted_data_index[f"{args.prediction_target}_pred"].to_numpy()
   else:
-    p = predicted_data_index[f"{args.prediction_target}_mean"].to_numpy()
+    p = predicted_data_index[f"{args.prediction_target}_pred_mean"].to_numpy()
   
   msev = mse(p, y)
   rmsev = rmse(p, y)
