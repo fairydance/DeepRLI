@@ -1,0 +1,23 @@
+{
+  "train_data_root": "${TRAIN_DATA_ROOT}",
+  "train_data_index": "${TRAIN_DATA_INDEX}",
+  "train_data_files": "${TRAIN_DATA_FILES}",
+  "epoch": 1000,
+  "batch": 6,
+  "initial_lr": 0.0002,
+  "lr_reduction_factor": 0.5,
+  "lr_reduction_patience": 15,
+  "min_lr": 1e-6,
+  "weight_decay": 0,
+  "f_dropout_rate": 0.0,
+  "g_dropout_rate": 0.0,
+  "hidden_dim": 64,
+  "num_attention_heads": 8,
+  "use_layer_norm": false,
+  "use_batch_norm": true,
+  "use_residual": true,
+  "gpu_id": 0,
+  "enable_data_parallel": false,
+  "use_all_train_data": true,
+  "save_path": "${SAVE_PATH}"
+}

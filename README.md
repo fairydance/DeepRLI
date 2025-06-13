@@ -76,9 +76,6 @@ The architecture of DeepRLI is illustrated in Figure 1.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-> [!NOTE]  
-> This document is currently applicable to [Release v1.0.1](https://github.com/fairydance/DeepRLI/releases/tag/v1.0.1).
-
 
 
 <!-- GETTING STARTED -->
@@ -126,17 +123,17 @@ ${DATA_ROOT_DIR}
 ├── index
 └── raw
 ```
-The directory `raw` should contain the structure files of ligands and proteins. And the `index` directory provides index files for the data to be processed.
+The directory `raw` should contain the structure files of ligands and proteins. And the `index` directory provides index files for the data to be processed. The `examples/data` directory in this repository provides data examples for reference.
 
 The script for this job is deposited in the `${REPO_ROOT}/src/deeprli/preprocess` directory. Run it as below:
 ```sh
 python preprocess.py\
   --data-root "${DATA_ROOT_DIR}"\
   --data-index "${DATA_INDEX_FILE}"\
-  --ligand-file-types "sdf,mol2,pdb"\
+  --ligand-file-types "sdf,mol2"\
   --dist-cutoff 6.5
 ```
-The path of `${DATA_INDEX_FILE}` in the above command is relative to the `${DATA_ROOT_DIR}`. After executing, the processed data will be stored in the location `${DATA_ROOT_DIR}/processed`. In addition, this script will also output an index file at the end that stores the successfully processed data.
+The path of `${DATA_INDEX_FILE}` in the above command is relative to the `${DATA_ROOT_DIR}`. After execution, each complex data after processing will be stored in the `${DATA_ROOT_DIR}/processed` location, and finally a file containing all processed complex data will be packaged and saved in the `${DATA_ROOT_DIR}/compiled` directory. The "data_file" for training and inference input is the packaged file. In addition, this script will also output an index file at the end that stores the successfully processed data.
 
 It should be noted that the `${DATA_INDEX_FILE}` can only contain the processed data for the subsequent training or inference task. If there exist items reside in the `${DATA_INDEX_FILE}` but cannot be found in the `${DATA_ROOT_DIR}/processed` folder, the data preprocessing will be re-executed.
 
@@ -183,37 +180,16 @@ python infer.heavy.py --config "${CONFIG_FILE}"
 An example of the configuration file is as follows:
 ```json
 {
+  "model": "/path/to/trained_model.state_dict.pth",
+  "model_format": "state_dict",
   "data_root": "${DATA_ROOT}",
   "data_index": "${DATA_INDEX}",
-  "batch": 30,
+  "data_file": "${DATA_FILE}",
+  "batch": 32,
   "gpu_id": 0,
   "save_path": "${SAVE_PATH}"
 }
 ```
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- ALL IN ONE -->
-## All in One
-
-To facilitate users, we also provide an all-in-one script. Based on this, users only need to provide the necessary inputs, and the program can automatically complete data processing and all subsequent procedures to obtain the desired results, eliminating the need for manual step-by-step processing.
-
-### Inference AIO
-
-The integrated script for inference, `aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py`, enables users to complete the entire process of data processing and inference with a single click by only providing a protein file in PDB format, a small molecule file in SDF format, a known ligand file in SDF format, and a trained model parameter file. The known ligand file contains the ligands already discovered for the target under study, and the program will truncate the binding pocket based on it. An example of executing the script is as follows:
-
-```sh
-python aio/infer_aio.receptor_in_pdb_and_ligands_in_sdf.py\
-  --receptor-file-path "${RECEPTOR_FILE_PATH}"\
-  --ligand-file-path "${LIGAND_FILE_PATH}"\
-  --known-ligand-file-path "${KNOWN_LIGAND_FILE_PATH}"\
-  --model "${MODEL}"\
-  --save-path "${SAVE_PATH}"
-```
-
-If these options are not provided, the script will automatically read `receptor.pdb`, `ligands.sdf`, `known_ligands.sdf` and `trained_model.state_dict.pth` in the current directory as inputs. More details about the input options can be viewed through the output of the `--help` option.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

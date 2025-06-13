@@ -1,0 +1,10 @@
+{
+  "model": "/path/to/trained_model.state_dict.pth",
+  "model_format": "state_dict",
+  "data_root": "${DATA_ROOT}",
+  "data_index": "${DATA_INDEX}",
+  "data_file": "${DATA_FILE}",
+  "batch": 32,
+  "gpu_id": 0,
+  "save_path": "${SAVE_PATH}"
+}
