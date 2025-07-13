@@ -14,11 +14,11 @@
   <p align="center">
     A Multi-objective Framework for Universal Protein–Ligand Interaction Prediction
     <br />
+    <a href="https://doi.org/10.1039/d4dd00403e"><strong>Article</strong></a>
+    ·
     <a href="https://github.com/fairydance/DeepRLI"><strong>GitHub</strong></a>
     ·
     <a href="https://zenodo.org/records/11116386"><strong>Zenodo</strong></a>
-    ·
-    <a href="https://arxiv.org/abs/2401.10806"><strong>arXiv</strong></a>
     <br />
     <br />
     <a href="https://doi.org/10.5281/zenodo.11116386">Training Datasets</a>
@@ -47,12 +47,6 @@
         <li><a href="#preprocessing">Preprocessing</a></li>
         <li><a href="#training">Training</a></li>
         <li><a href="#inference">Inference</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#all-in-one">All in One</a>
-      <ul>
-        <li><a href="#inference-aio">Inference AIO</a></li>
       </ul>
     </li>
     <li><a href="#license">License</a></li>
